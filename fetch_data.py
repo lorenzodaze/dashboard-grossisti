@@ -72,10 +72,14 @@ def main():
     # --- Wholesaler accounts ---
     print("Fetching wholesaler accounts...")
     accounts = search_records(token, 'Accounts',
-        '(Client_type:equals:Wholesaler)', 'id,Account_Name')
+        '(Client_type:equals:Wholesaler)', 'id,Account_Name,Country,Region')
     print(f"Wholesaler accounts: {len(accounts)}")
     wholesaler_ids = {a['id'] for a in accounts}
-    acct_names     = {a['id']: a['Account_Name'] for a in accounts}
+    acct_info      = {a['id']: {
+        'name':    a.get('Account_Name', '') or '',
+        'country': a.get('Country', '') or '',
+        'region':  a.get('Region', '') or '',
+    } for a in accounts}
 
     if not wholesaler_ids:
         print("No wholesaler accounts found.")
@@ -96,8 +100,11 @@ def main():
     for o in all_orders:
         acct = o.get('Account_Name', {})
         if isinstance(acct, dict) and acct.get('id') in wholesaler_ids:
-            o['_account_id']   = acct.get('id', '')
-            o['_account_name'] = acct_names.get(acct.get('id', ''), acct.get('name', ''))
+            info = acct_info.get(acct.get('id', ''), {})
+            o['_account_id']      = acct.get('id', '')
+            o['_account_name']    = info.get('name') or acct.get('name', '')
+            o['_account_country'] = info.get('country', '')
+            o['_account_region']  = info.get('region', '')
             orders_raw.append(o)
     print(f"Wholesaler orders: {len(orders_raw)}")
 
@@ -152,7 +159,10 @@ def main():
 
         if aid not in clients:
             clients[aid] = {
-                'id': aid, 'name': aname,
+                'id':      aid,
+                'name':    aname,
+                'country': order.get('_account_country', ''),
+                'region':  order.get('_account_region', ''),
                 'quarterly': {}, 'monthly': {}, 'orders': []
             }
 

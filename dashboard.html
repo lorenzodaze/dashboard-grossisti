@@ -59,9 +59,21 @@
 
       <!-- Clients -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+        <div class="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Ordini per Cliente</h2>
-          <span class="text-xs text-slate-400" id="clientCount"></span>
+          <div class="flex flex-wrap items-center gap-2">
+            <select id="filterCountry"
+              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                     focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Tutte le nazioni</option>
+            </select>
+            <select id="filterRegion"
+              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                     focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="">Tutte le regioni</option>
+            </select>
+            <span class="text-xs text-slate-400" id="clientCount"></span>
+          </div>
         </div>
         <div id="clientsTable"></div>
       </div>
@@ -172,12 +184,15 @@
         }
       });
 
-      // Clients
+      // Clients + filtri Country/Region
       const clients = d.clients || [];
-      document.getElementById('clientCount').textContent = clients.length + ' clienti';
-      document.getElementById('clientsTable').innerHTML = clients.length
-        ? clients.map((c, ci) => buildClientRow(c, ci, d)).join('')
-        : '<p class="px-6 py-8 text-slate-400 text-sm text-center">Nessun dato disponibile.</p>';
+      populateCountryFilter(clients);
+      document.getElementById('filterCountry').addEventListener('change', () => {
+        populateRegionFilter(clients);
+        renderClients(clients, d);
+      });
+      document.getElementById('filterRegion').addEventListener('change', () => renderClients(clients, d));
+      renderClients(clients, d);
 
       // Products
       renderProducts(d.products || []);
@@ -189,6 +204,39 @@
 
       document.getElementById('loading').classList.add('hidden');
       document.getElementById('content').classList.remove('hidden');
+    }
+
+    function populateCountryFilter(clients) {
+      const sel = document.getElementById('filterCountry');
+      const cur = sel.value;
+      const countries = [...new Set(clients.map(c => c.country).filter(Boolean))].sort();
+      sel.innerHTML = '<option value="">Tutte le nazioni</option>' +
+        countries.map(c => `<option value="${c}">${c}</option>`).join('');
+      sel.value = cur;
+      populateRegionFilter(clients);
+    }
+
+    function populateRegionFilter(clients) {
+      const country = document.getElementById('filterCountry').value;
+      const sel     = document.getElementById('filterRegion');
+      const cur     = sel.value;
+      const list    = country ? clients.filter(c => c.country === country) : clients;
+      const regions = [...new Set(list.map(c => c.region).filter(Boolean))].sort();
+      sel.innerHTML = '<option value="">Tutte le regioni</option>' +
+        regions.map(r => `<option value="${r}">${r}</option>`).join('');
+      sel.value = regions.includes(cur) ? cur : '';
+    }
+
+    function renderClients(clients, d) {
+      const country  = document.getElementById('filterCountry').value;
+      const region   = document.getElementById('filterRegion').value;
+      const filtered = clients.filter(c =>
+        (!country || c.country === country) &&
+        (!region  || c.region  === region));
+      document.getElementById('clientCount').textContent = filtered.length + ' clienti';
+      document.getElementById('clientsTable').innerHTML = filtered.length
+        ? filtered.map((c, ci) => buildClientRow(c, ci, d)).join('')
+        : '<p class="px-6 py-8 text-slate-400 text-sm text-center">Nessun cliente per i filtri selezionati.</p>';
     }
 
     function buildClientRow(c, ci, d) {
@@ -251,6 +299,7 @@
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-slate-300 text-xs w-3 text-center transition-transform" id="cl-arr-${ci}">▶</span>
                 <span class="font-semibold text-slate-800 text-sm">${c.name}</span>
+                ${c.country ? `<span class="text-xs text-slate-500 bg-blue-50 px-1.5 py-0.5 rounded">${c.country}${c.region ? ' · ' + c.region : ''}</span>` : ''}
                 <span class="text-xs text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">${orders.length} ordini</span>
               </div>
               <div class="ml-5 mt-1 flex gap-3 flex-wrap">${qBadges}</div>
