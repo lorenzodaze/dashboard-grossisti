@@ -73,8 +73,8 @@ def main():
     token = get_token()
     print("Token OK")
 
-    # --- Wholesaler accounts ---
-    accounts = get_all(token, 'Accounts', '(Client_type:equals:Wholesaler)', 'id,Account_Name')
+    # --- Wholesaler accounts (COQL per evitare problemi con criteria API) ---
+    accounts = coql(token, "SELECT id, Account_Name FROM Accounts WHERE Client_type = 'Wholesaler'")
     print(f"Wholesaler accounts: {len(accounts)}")
     if not accounts:
         print("No wholesaler accounts found. Check that Client_type field has value 'Wholesaler'.")
