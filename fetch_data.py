@@ -45,24 +45,15 @@ def search_records(token, module, criteria, fields):
     return results
 
 
-def get_related(token, module, record_id, related, fields):
-    results, page = [], 1
-    while True:
-        r = requests.get(f'{BASE_URL}/{module}/{record_id}/{related}',
-            headers=auth(token),
-            params={'fields': fields, 'per_page': 200, 'page': page})
-        if r.status_code == 204:
-            break
-        if not r.ok:
-            break
-        d = r.json()
-        if 'data' not in d:
-            break
-        results.extend(d['data'])
-        if not d.get('info', {}).get('more_records'):
-            break
-        page += 1
-    return results
+def get_order_items(token, order_id):
+    """Fetch a single Sales Order and return its embedded Ordered_Items list."""
+    r = requests.get(f'{BASE_URL}/Sales_Orders/{order_id}', headers=auth(token))
+    if not r.ok:
+        return []
+    d = r.json()
+    if 'data' not in d or not d['data']:
+        return []
+    return d['data'][0].get('Ordered_Items', [])
 
 
 def quarter_of(d):
@@ -110,14 +101,12 @@ def main():
             orders_raw.append(o)
     print(f"Wholesaler orders: {len(orders_raw)}")
 
-    # --- Ordered Items per ordine ---
-    print(f"Fetching ordered items for {len(orders_raw)} orders...")
+    # --- Ordered Items: embedded nel record ordine, fetch individuale ---
+    print(f"Fetching full order records for {len(orders_raw)} orders...")
     items_by_order = {}
     for i, order in enumerate(orders_raw):
-        oid   = order['id']
-        items = get_related(token, 'Sales_Orders', oid, 'Ordered_Items',
-            'Product_Name,Product_Code,Quantity,Net_Total,Net_price_1')
-        items_by_order[oid] = items
+        oid = order['id']
+        items_by_order[oid] = get_order_items(token, oid)
         if (i + 1) % 50 == 0:
             print(f"  {i+1}/{len(orders_raw)} orders processed")
     print(f"Items loaded for {len(items_by_order)} orders")
@@ -175,8 +164,8 @@ def main():
         for it in items_by_order.get(order['id'], []):
             pname = it.get('Product_Name', '')
             pname = pname.get('name', '') if isinstance(pname, dict) else str(pname)
-            item_net   = float(it.get('Net_Total',   0) or 0)
-            item_unit  = float(it.get('Net_price_1', 0) or 0)
+            item_net   = float(it.get('Net_Total',      0) or 0)
+            item_unit  = float(it.get('Unitary_Price_1', 0) or 0)
             # Apply cash discount proportionally at item level
             disc_factor = 1 - checkout_pct / 100 if checkout_pct else 1
             items_out.append({
