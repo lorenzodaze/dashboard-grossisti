@@ -97,7 +97,7 @@ def main():
     print(f"Fetching all orders from {two_years_ago} to {today_str}...")
     all_orders = search_records(token, 'Sales_Orders',
         f'(Date:between:{two_years_ago},{today_str})',
-        'id,SO_Number,Account_Name,Date,Grand_Total')
+        'id,SO_Number,Account_Name,Date,Shipping_Date,Sub_Total,Checkout_Discount,Checkout_discount_value')
     print(f"Total orders in period: {len(all_orders)}")
 
     # Filtra solo gli ordini dei clienti Wholesaler
@@ -141,14 +141,22 @@ def main():
         aname = order['_account_name']
 
         date_str = order.get('Date', '')
-        if not date_str:
+        # Use Shipping_Date for monthly/quarterly allocation; fall back to Date
+        ship_str  = order.get('Shipping_Date') or ''
+        alloc_str = ship_str if ship_str else date_str
+        if not alloc_str:
             continue
         try:
-            odate = datetime.strptime(date_str, '%Y-%m-%d').date()
+            odate = datetime.strptime(alloc_str, '%Y-%m-%d').date()
         except ValueError:
             continue
 
-        total    = float(order.get('Grand_Total', 0) or 0)
+        # Net value: Sub_Total (after line discounts) minus cash discount, no VAT
+        sub_total     = float(order.get('Sub_Total', 0) or 0)
+        checkout_disc = float(order.get('Checkout_discount_value', 0) or 0)
+        checkout_pct  = float(order.get('Checkout_Discount', 0) or 0)
+        total         = round(sub_total - checkout_disc, 2)
+
         omonth   = odate.strftime('%Y-%m')
         oq, oy   = quarter_of(odate)
         oqlbl    = qlabel(oq, oy)
@@ -167,18 +175,23 @@ def main():
         for it in items_by_order.get(order['id'], []):
             pname = it.get('Product_Name', '')
             pname = pname.get('name', '') if isinstance(pname, dict) else str(pname)
+            item_net   = float(it.get('Net_Total',   0) or 0)
+            item_unit  = float(it.get('Net_price_1', 0) or 0)
+            # Apply cash discount proportionally at item level
+            disc_factor = 1 - checkout_pct / 100 if checkout_pct else 1
             items_out.append({
                 'code':  it.get('Product_Code', '') or '',
                 'name':  pname,
-                'qty':   float(it.get('Quantity',    0) or 0),
-                'unit':  float(it.get('Net_price_1', 0) or 0),
-                'total': float(it.get('Net_Total',   0) or 0),
+                'qty':   float(it.get('Quantity', 0) or 0),
+                'unit':  round(item_unit * disc_factor, 4),
+                'total': round(item_net  * disc_factor, 2),
             })
 
         c['orders'].append({
             'id':    order['id'],
             'num':   order.get('SO_Number', ''),
             'date':  date_str,
+            'ship':  ship_str,
             'total': total,
             'items': items_out,
         })

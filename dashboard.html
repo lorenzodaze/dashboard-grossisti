@@ -192,7 +192,7 @@
     }
 
     function buildClientRow(c, ci, d) {
-      const orders  = (c.orders || []).slice().sort((a,b) => b.date.localeCompare(a.date));
+      const orders  = (c.orders || []).slice().sort((a,b) => (b.ship||b.date).localeCompare(a.ship||a.date));
       const qLabels = (d.quarters || []).slice(0,3);
 
       const qBadges = qLabels.map(q =>
@@ -218,7 +218,7 @@
               <div class="flex items-center gap-2">
                 <span class="text-slate-300 text-xs w-3 text-center transition-transform" id="arr-${ci}-${oi}">▶</span>
                 <span class="font-mono text-sm text-blue-600 font-medium">${o.num || o.id.slice(0,10)}</span>
-                <span class="text-xs text-slate-400">${o.date}</span>
+                ${o.ship ? `<span class="text-xs text-slate-400">spediz. ${o.ship}</span>` : `<span class="text-xs text-slate-400">${o.date}</span>`}
                 <span class="text-xs text-slate-300">${o.items?.length||0} prod.</span>
               </div>
             </td>
