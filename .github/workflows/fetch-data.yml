@@ -2,7 +2,7 @@ name: Aggiorna Dati Dashboard
 
 on:
   schedule:
-    - cron: '*/30 * * * *'   # ogni 30 minuti
+    - cron: '0 6 * * *'   # ogni giorno alle 06:00 UTC
   workflow_dispatch:           # avvio manuale dal sito GitHub
 
 permissions:
