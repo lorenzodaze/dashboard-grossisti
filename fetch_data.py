@@ -85,14 +85,27 @@ def main():
         print("No wholesaler accounts found.")
         return
 
-    # --- Sales Orders: cerca per data (ultimi 2 anni) poi filtra per account ---
-    two_years_ago = date(today.year - 2, today.month, 1).strftime('%Y-%m-%d')
-    today_str     = today.strftime('%Y-%m-%d')
-
-    print(f"Fetching all orders from {two_years_ago} to {today_str}...")
-    all_orders = search_records(token, 'Sales_Orders',
-        f'(Date:between:{two_years_ago},{today_str})',
-        'id,SO_Number,Account_Name,Date,Shipping_Date,Sub_Total,Checkout_Discount,Checkout_discount_value')
+    # --- Sales Orders: cerca MESE PER MESE (l'endpoint /search e' limitato a
+    #     ~2000 record per query, quindi una singola ricerca su 2 anni taglierebbe
+    #     via lo storico piu' vecchio). Si parte da gennaio di 2 anni fa.
+    order_fields = ('id,SO_Number,Account_Name,Date,Shipping_Date,'
+                    'Sub_Total,Checkout_Discount,Checkout_discount_value')
+    start_year = today.year - 2
+    print(f"Fetching orders month by month from {start_year}-01 to {today.strftime('%Y-%m')}...")
+    all_orders = []
+    y, m = start_year, 1
+    while (y, m) <= (today.year, today.month):
+        first    = date(y, m, 1)
+        last_day = calendar.monthrange(y, m)[1]
+        last     = min(date(y, m, last_day), today)
+        chunk = search_records(token, 'Sales_Orders',
+            f'(Date:between:{first:%Y-%m-%d},{last:%Y-%m-%d})', order_fields)
+        all_orders.extend(chunk)
+        if chunk:
+            print(f"  {y}-{m:02d}: {len(chunk)} orders")
+        m += 1
+        if m > 12:
+            m, y = 1, y + 1
     print(f"Total orders in period: {len(all_orders)}")
 
     # Filtra solo gli ordini dei clienti Wholesaler
