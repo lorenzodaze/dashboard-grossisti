@@ -25,7 +25,6 @@ def auth(token):
 
 
 def search_records(token, module, criteria, fields):
-    """Zoho CRM search endpoint — non richiede scope COQL"""
     results, page = [], 1
     while True:
         r = requests.get(f'{BASE_URL}/{module}/search',
@@ -34,7 +33,7 @@ def search_records(token, module, criteria, fields):
         if r.status_code == 204:
             break
         if not r.ok:
-            print(f"  search error {r.status_code}: {r.text[:200]}")
+            print(f"  search error {r.status_code} on {module}: {r.text[:200]}")
             break
         d = r.json()
         if 'data' not in d:
@@ -47,7 +46,6 @@ def search_records(token, module, criteria, fields):
 
 
 def get_related(token, module, record_id, related, fields):
-    """Related records endpoint"""
     results, page = [], 1
     while True:
         r = requests.get(f'{BASE_URL}/{module}/{record_id}/{related}',
@@ -85,35 +83,43 @@ def main():
     accounts = search_records(token, 'Accounts',
         '(Client_type:equals:Wholesaler)', 'id,Account_Name')
     print(f"Wholesaler accounts: {len(accounts)}")
+    wholesaler_ids = {a['id'] for a in accounts}
+    acct_names     = {a['id']: a['Account_Name'] for a in accounts}
 
-    if not accounts:
+    if not wholesaler_ids:
         print("No wholesaler accounts found.")
         return
 
-    # --- Sales Orders per account ---
-    print("Fetching sales orders...")
+    # --- Sales Orders: cerca per data (ultimi 2 anni) poi filtra per account ---
+    two_years_ago = date(today.year - 2, today.month, 1).strftime('%Y-%m-%d')
+    today_str     = today.strftime('%Y-%m-%d')
+
+    print(f"Fetching all orders from {two_years_ago} to {today_str}...")
+    all_orders = search_records(token, 'Sales_Orders',
+        f'(Date:between:{two_years_ago},{today_str})',
+        'id,SO_Number,Account_Name,Date,Grand_Total')
+    print(f"Total orders in period: {len(all_orders)}")
+
+    # Filtra solo gli ordini dei clienti Wholesaler
     orders_raw = []
-    for acct in accounts:
-        aid   = acct['id']
-        aname = acct['Account_Name']
-        orders = get_related(token, 'Accounts', aid, 'Sales_Orders',
-            'id,SO_Number,Account_Name,Date,Grand_Total')
-        for o in orders:
-            o['_account_id']   = aid
-            o['_account_name'] = aname
-        orders_raw.extend(orders)
-        print(f"  {aname}: {len(orders)} orders")
+    for o in all_orders:
+        acct = o.get('Account_Name', {})
+        if isinstance(acct, dict) and acct.get('id') in wholesaler_ids:
+            o['_account_id']   = acct.get('id', '')
+            o['_account_name'] = acct_names.get(acct.get('id', ''), acct.get('name', ''))
+            orders_raw.append(o)
+    print(f"Wholesaler orders: {len(orders_raw)}")
 
-    print(f"Total orders: {len(orders_raw)}")
-
-    # --- Ordered Items per order ---
-    print("Fetching ordered items...")
+    # --- Ordered Items per ordine ---
+    print(f"Fetching ordered items for {len(orders_raw)} orders...")
     items_by_order = {}
-    for order in orders_raw:
+    for i, order in enumerate(orders_raw):
         oid   = order['id']
         items = get_related(token, 'Sales_Orders', oid, 'Ordered_Items',
             'Product_Name,Product_Code,Quantity,Net_Total,Net_price_1')
         items_by_order[oid] = items
+        if (i + 1) % 50 == 0:
+            print(f"  {i+1}/{len(orders_raw)} orders processed")
     print(f"Items loaded for {len(items_by_order)} orders")
 
     # --- Quarters list ---
@@ -128,7 +134,7 @@ def main():
 
     current_month = today.strftime('%Y-%m')
 
-    # --- Per-client structure ---
+    # --- Struttura per cliente ---
     clients = {}
     for order in orders_raw:
         aid   = order['_account_id']
@@ -145,7 +151,7 @@ def main():
         total    = float(order.get('Grand_Total', 0) or 0)
         omonth   = odate.strftime('%Y-%m')
         oq, oy   = quarter_of(odate)
-        oqlabel  = qlabel(oq, oy)
+        oqlbl    = qlabel(oq, oy)
 
         if aid not in clients:
             clients[aid] = {
@@ -154,8 +160,8 @@ def main():
             }
 
         c = clients[aid]
-        c['monthly'][omonth]    = c['monthly'].get(omonth, 0)    + total
-        c['quarterly'][oqlabel] = c['quarterly'].get(oqlabel, 0) + total
+        c['monthly'][omonth] = c['monthly'].get(omonth, 0) + total
+        c['quarterly'][oqlbl] = c['quarterly'].get(oqlbl, 0) + total
 
         items_out = []
         for it in items_by_order.get(order['id'], []):
@@ -177,7 +183,7 @@ def main():
             'items': items_out,
         })
 
-    # --- Monthly chart (last 12 months) ---
+    # --- Grafico mensile (ultimi 12 mesi) ---
     monthly_chart = {}
     for i in range(11, -1, -1):
         year  = today.year
@@ -190,14 +196,14 @@ def main():
         monthly_chart[label] = round(
             sum(c['monthly'].get(m_str, 0) for c in clients.values()), 2)
 
-    # --- Summary ---
+    # --- Riepilogo ---
     summary_q, summary_month = {}, 0
     for c in clients.values():
         summary_month += c['monthly'].get(current_month, 0)
         for ql, t in c['quarterly'].items():
             summary_q[ql] = summary_q.get(ql, 0) + t
 
-    # --- Products totals ---
+    # --- Totali prodotti ---
     products = {}
     for c in clients.values():
         for o in c['orders']:
