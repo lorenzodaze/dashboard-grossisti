@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__5cd3acb1-2ca5-41b8-a355-889e928be7b3__getFields",
+      "PowerShell(node --version)",
+      "PowerShell(npm --version)"
+    ]
+  }
+}

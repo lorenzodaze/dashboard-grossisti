@@ -1,0 +1,40 @@
+name: Aggiorna Dati Dashboard
+
+on:
+  schedule:
+    - cron: '*/30 * * * *'   # ogni 30 minuti
+  workflow_dispatch:           # avvio manuale dal sito GitHub
+
+permissions:
+  contents: write
+
+jobs:
+  fetch-data:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Installa dipendenze
+        run: pip install requests
+
+      - name: Scarica dati da Zoho CRM
+        env:
+          ZOHO_CLIENT_ID:     ${{ secrets.ZOHO_CLIENT_ID }}
+          ZOHO_CLIENT_SECRET: ${{ secrets.ZOHO_CLIENT_SECRET }}
+          ZOHO_REFRESH_TOKEN: ${{ secrets.ZOHO_REFRESH_TOKEN }}
+        run: python fetch_data.py
+
+      - name: Commit e push dati
+        run: |
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name  "github-actions[bot]"
+          git add data/dashboard.json
+          git diff --staged --quiet || git commit -m "Update dashboard data - $(date -u '+%Y-%m-%d %H:%M UTC')"
+          git push

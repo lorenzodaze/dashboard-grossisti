@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Dashboard Grossisti</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <style>
+    .fade-in { animation: fadeIn .3s ease; }
+    @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+  </style>
+</head>
+<body class="bg-slate-100 min-h-screen">
+
+  <!-- Header -->
+  <header class="bg-white border-b border-slate-200 sticky top-0 z-20">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex justify-between items-center">
+      <div class="flex items-center gap-3">
+        <div class="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shrink-0">
+          <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+              d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="text-base font-bold text-slate-800 leading-tight">Dashboard Grossisti</h1>
+          <p class="text-xs text-slate-400" id="lastUpdate">Caricamento...</p>
+        </div>
+      </div>
+      <button onclick="logout()"
+        class="text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+        Esci
+      </button>
+    </div>
+  </header>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 py-6">
+
+    <!-- Loading -->
+    <div id="loading" class="flex flex-col items-center justify-center py-24 gap-3">
+      <div class="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full"></div>
+      <p class="text-sm text-slate-400">Caricamento dati...</p>
+    </div>
+
+    <!-- Content -->
+    <div id="content" class="hidden fade-in space-y-6">
+
+      <!-- KPI Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="kpiCards"></div>
+
+      <!-- Chart -->
+      <div class="bg-white rounded-xl border border-slate-200 p-6">
+        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
+          Fatturato mensile – ultimi 12 mesi
+        </h2>
+        <canvas id="monthlyChart" height="70"></canvas>
+      </div>
+
+      <!-- Clients -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Ordini per Cliente</h2>
+          <span class="text-xs text-slate-400" id="clientCount"></span>
+        </div>
+        <div id="clientsTable"></div>
+      </div>
+
+      <!-- Products -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Prodotti Ordinati</h2>
+          <input type="text" id="productSearch" placeholder="Cerca codice o nome..."
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full sm:w-56
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+        </div>
+        <div id="productsTable"></div>
+      </div>
+
+    </div><!-- /content -->
+  </main>
+
+  <script>
+    if (sessionStorage.getItem('auth') !== '1') window.location.href = 'index.html';
+
+    function logout() {
+      sessionStorage.removeItem('auth');
+      window.location.href = 'index.html';
+    }
+
+    const fmt = n =>
+      '€ ' + Number(n).toLocaleString('it-IT', {minimumFractionDigits:2, maximumFractionDigits:2});
+    const fmtN = n =>
+      Number(n).toLocaleString('it-IT', {maximumFractionDigits:2});
+
+    const KPI_COLORS = [
+      {bg:'bg-blue-50',   text:'text-blue-600',   badge:'bg-blue-100'},
+      {bg:'bg-emerald-50',text:'text-emerald-600', badge:'bg-emerald-100'},
+      {bg:'bg-violet-50', text:'text-violet-600',  badge:'bg-violet-100'},
+      {bg:'bg-amber-50',  text:'text-amber-600',   badge:'bg-amber-100'},
+    ];
+
+    let dashData = null;
+    let chartInstance = null;
+
+    async function loadData() {
+      try {
+        const r = await fetch('data/dashboard.json?t=' + Date.now());
+        if (!r.ok) throw new Error(r.status);
+        dashData = await r.json();
+        render(dashData);
+      } catch (e) {
+        document.getElementById('loading').innerHTML =
+          '<p class="text-red-500 text-sm">Errore nel caricamento dei dati. Riprova tra qualche minuto.</p>';
+      }
+    }
+
+    function render(d) {
+      document.getElementById('lastUpdate').textContent = 'Aggiornato: ' + d.generated_at;
+
+      // KPI
+      const quarters = d.quarters || [];
+      const sqData   = d.summary?.quarterly || {};
+      const kpis = [
+        { label:'Mese Corrente',        sub: d.current_month_label || '', value: d.summary?.month || 0 },
+        { label:'Trimestre Corrente',   sub: quarters[0] || '',           value: sqData[quarters[0]] || 0 },
+        { label:'Trimestre Precedente', sub: quarters[1] || '',           value: sqData[quarters[1]] || 0 },
+        { label:'Due Trimestri Fa',     sub: quarters[2] || '',           value: sqData[quarters[2]] || 0 },
+      ];
+      document.getElementById('kpiCards').innerHTML = kpis.map((k, i) => {
+        const c = KPI_COLORS[i];
+        return `
+          <div class="${c.bg} rounded-xl p-5 border border-transparent">
+            <div class="flex justify-between items-start mb-2">
+              <span class="text-xs font-semibold ${c.text} uppercase tracking-wide leading-tight">${k.label}</span>
+              ${k.sub ? `<span class="text-xs ${c.badge} ${c.text} px-2 py-0.5 rounded-full font-medium shrink-0 ml-1">${k.sub}</span>` : ''}
+            </div>
+            <div class="text-2xl font-bold text-slate-800">${fmt(k.value)}</div>
+          </div>`;
+      }).join('');
+
+      // Chart
+      const labels = Object.keys(d.monthly_chart || {});
+      const values = Object.values(d.monthly_chart || {});
+      if (chartInstance) chartInstance.destroy();
+      chartInstance = new Chart(document.getElementById('monthlyChart'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            backgroundColor: labels.map((_, i) => i === labels.length - 1
+              ? 'rgba(37,99,235,0.9)' : 'rgba(37,99,235,0.45)'),
+            borderRadius: 5,
+            borderSkipped: false,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: { label: ctx => ' ' + fmt(ctx.raw) } }
+          },
+          scales: {
+            x: { grid: { display: false } },
+            y: {
+              beginAtZero: true,
+              ticks: { callback: v => '€' + Number(v).toLocaleString('it-IT') },
+              grid: { color: 'rgba(0,0,0,.04)' }
+            }
+          }
+        }
+      });
+
+      // Clients
+      const clients = d.clients || [];
+      document.getElementById('clientCount').textContent = clients.length + ' clienti';
+      document.getElementById('clientsTable').innerHTML = clients.length
+        ? clients.map((c, ci) => buildClientRow(c, ci, d)).join('')
+        : '<p class="px-6 py-8 text-slate-400 text-sm text-center">Nessun dato disponibile.</p>';
+
+      // Products
+      renderProducts(d.products || []);
+      document.getElementById('productSearch').addEventListener('input', e => {
+        const q = e.target.value.toLowerCase();
+        renderProducts((d.products || []).filter(p =>
+          (p.code || '').toLowerCase().includes(q) || (p.name || '').toLowerCase().includes(q)));
+      });
+
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('content').classList.remove('hidden');
+    }
+
+    function buildClientRow(c, ci, d) {
+      const orders  = (c.orders || []).slice().sort((a,b) => b.date.localeCompare(a.date));
+      const qLabels = (d.quarters || []).slice(0,3);
+
+      const qBadges = qLabels.map(q =>
+        `<span class="text-slate-400 text-xs">${q}:&nbsp;<span class="font-semibold text-slate-600">${fmt(c.quarterly?.[q]||0)}</span></span>`
+      ).join('<span class="text-slate-200 mx-1">|</span>');
+
+      const ordersRows = orders.map((o, oi) => {
+        const itemRows = (o.items || []).map(it => `
+          <tr class="bg-slate-50 text-xs border-t border-slate-100">
+            <td class="pl-24 pr-3 py-2 text-slate-500" colspan="2">
+              <span class="font-mono bg-white border border-slate-200 px-1.5 py-0.5 rounded text-slate-700 mr-2">${it.code||'N/D'}</span>
+              <span class="text-slate-600">${it.name}</span>
+            </td>
+            <td class="px-4 py-2 text-right text-slate-600">${fmtN(it.qty)}</td>
+            <td class="px-4 py-2 text-right text-slate-500">${fmt(it.unit)}</td>
+            <td class="px-4 py-2 text-right font-medium text-slate-700">${fmt(it.total)}</td>
+          </tr>`).join('');
+
+        return `
+          <tr class="border-t border-slate-100 hover:bg-slate-50 cursor-pointer transition-colors"
+              onclick="toggleEl('oi-${ci}-${oi}','arr-${ci}-${oi}')">
+            <td class="pl-14 pr-3 py-2.5" colspan="2">
+              <div class="flex items-center gap-2">
+                <span class="text-slate-300 text-xs w-3 text-center transition-transform" id="arr-${ci}-${oi}">▶</span>
+                <span class="font-mono text-sm text-blue-600 font-medium">${o.num || o.id.slice(0,10)}</span>
+                <span class="text-xs text-slate-400">${o.date}</span>
+                <span class="text-xs text-slate-300">${o.items?.length||0} prod.</span>
+              </div>
+            </td>
+            <td class="px-4 py-2.5 text-right text-xs text-slate-400"></td>
+            <td class="px-4 py-2.5 text-right text-xs text-slate-400"></td>
+            <td class="px-4 py-2.5 text-right font-semibold text-slate-800 text-sm">${fmt(o.total)}</td>
+          </tr>
+          <tr id="oi-${ci}-${oi}" class="hidden">
+            <td colspan="5" class="p-0">
+              <table class="w-full">
+                <thead>
+                  <tr class="bg-blue-50 text-xs">
+                    <th class="pl-24 pr-3 py-1.5 text-left text-slate-500 font-medium" colspan="2">Codice / Prodotto</th>
+                    <th class="px-4 py-1.5 text-right text-slate-500 font-medium">Qtà</th>
+                    <th class="px-4 py-1.5 text-right text-slate-500 font-medium">P. Unitario</th>
+                    <th class="px-4 py-1.5 text-right text-slate-500 font-medium">Totale</th>
+                  </tr>
+                </thead>
+                <tbody>${itemRows || '<tr><td colspan="5" class="px-24 py-2 text-xs text-slate-400">Nessun articolo.</td></tr>'}</tbody>
+              </table>
+            </td>
+          </tr>`;
+      }).join('');
+
+      return `
+        <div class="border-b border-slate-100 last:border-0">
+          <div class="px-6 py-4 flex items-start justify-between cursor-pointer hover:bg-slate-50 transition-colors"
+               onclick="toggleEl('cl-${ci}','cl-arr-${ci}')">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-slate-300 text-xs w-3 text-center transition-transform" id="cl-arr-${ci}">▶</span>
+                <span class="font-semibold text-slate-800 text-sm">${c.name}</span>
+                <span class="text-xs text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded">${orders.length} ordini</span>
+              </div>
+              <div class="ml-5 mt-1 flex gap-3 flex-wrap">${qBadges}</div>
+            </div>
+            <div class="text-right ml-4 shrink-0">
+              <div class="text-base font-bold text-slate-800">${fmt(c.monthly?.[dashData.current_month]||0)}</div>
+              <div class="text-xs text-slate-400">mese corrente</div>
+            </div>
+          </div>
+          <table class="w-full hidden" id="cl-${ci}">
+            <thead>
+              <tr class="bg-slate-50 text-xs">
+                <th class="pl-14 pr-3 py-2 text-left text-slate-500 font-medium" colspan="2">Ordine</th>
+                <th class="px-4 py-2 text-right text-slate-500 font-medium"></th>
+                <th class="px-4 py-2 text-right text-slate-500 font-medium"></th>
+                <th class="px-4 py-2 text-right text-slate-500 font-medium">Totale</th>
+              </tr>
+            </thead>
+            <tbody>${ordersRows || '<tr><td colspan="5" class="px-14 py-3 text-xs text-slate-400">Nessun ordine trovato.</td></tr>'}</tbody>
+          </table>
+        </div>`;
+    }
+
+    function renderProducts(products) {
+      document.getElementById('productsTable').innerHTML = products.length ? `
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-slate-50 text-xs border-b border-slate-200">
+                <th class="px-6 py-3 text-left text-slate-500 font-medium">Codice</th>
+                <th class="px-6 py-3 text-left text-slate-500 font-medium">Prodotto</th>
+                <th class="px-6 py-3 text-right text-slate-500 font-medium">Qtà Totale</th>
+                <th class="px-6 py-3 text-right text-slate-500 font-medium">Valore €</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${products.map((p,i) => `
+                <tr class="${i%2===0?'bg-white':'bg-slate-50'} border-t border-slate-100 hover:bg-blue-50 transition-colors">
+                  <td class="px-6 py-3">
+                    <span class="font-mono bg-slate-100 px-2 py-0.5 rounded text-slate-700 text-xs">${p.code||'N/D'}</span>
+                  </td>
+                  <td class="px-6 py-3 text-slate-700">${p.name||'—'}</td>
+                  <td class="px-6 py-3 text-right text-slate-700">${fmtN(p.qty)}</td>
+                  <td class="px-6 py-3 text-right font-semibold text-slate-800">${fmt(p.total)}</td>
+                </tr>`).join('')}
+            </tbody>
+          </table>
+        </div>`
+        : '<p class="px-6 py-8 text-slate-400 text-sm text-center">Nessun prodotto trovato.</p>';
+    }
+
+    function toggleEl(id, arrowId) {
+      const el    = document.getElementById(id);
+      const arrow = document.getElementById(arrowId);
+      const open  = el.classList.toggle('hidden');
+      if (arrow) arrow.textContent = open ? '▶' : '▼';
+    }
+
+    loadData();
+    setInterval(loadData, 5 * 60 * 1000); // refresh ogni 5 min
+  </script>
+</body>
+</html>
