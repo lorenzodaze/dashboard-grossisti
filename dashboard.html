@@ -46,8 +46,27 @@
     <!-- Content -->
     <div id="content" class="hidden fade-in space-y-6">
 
-      <!-- KPI Cards -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="kpiCards"></div>
+      <!-- Filtri (controllano tutta la dashboard) -->
+      <div class="bg-white rounded-xl border border-slate-200 px-6 py-4 flex flex-col sm:flex-row sm:items-center gap-3">
+        <span class="text-xs font-semibold text-slate-500 uppercase tracking-wider shrink-0">Filtri</span>
+        <div class="flex flex-wrap items-center gap-2">
+          <select id="filterCountry"
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Tutte le nazioni</option>
+          </select>
+          <select id="filterRegion"
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Tutte le regioni</option>
+          </select>
+          <button id="filterReset"
+            class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+            Azzera
+          </button>
+          <span class="text-xs text-slate-400" id="filterScope"></span>
+        </div>
+      </div>
 
       <!-- Chart -->
       <div class="bg-white rounded-xl border border-slate-200 p-6">
@@ -57,23 +76,24 @@
         <canvas id="monthlyChart" height="70"></canvas>
       </div>
 
+      <!-- KPI Cards -->
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-4" id="kpiCards"></div>
+
+      <!-- Confronto mensile YoY -->
+      <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div class="px-6 py-4 border-b border-slate-100">
+          <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Confronto mensile <span id="yoyYears" class="text-slate-400 normal-case"></span>
+          </h2>
+        </div>
+        <div id="monthlyTable"></div>
+      </div>
+
       <!-- Clients -->
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div class="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">Ordini per Cliente</h2>
-          <div class="flex flex-wrap items-center gap-2">
-            <select id="filterCountry"
-              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
-                     focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">Tutte le nazioni</option>
-            </select>
-            <select id="filterRegion"
-              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
-                     focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="">Tutte le regioni</option>
-            </select>
-            <span class="text-xs text-slate-400" id="clientCount"></span>
-          </div>
+          <span class="text-xs text-slate-400" id="clientCount"></span>
         </div>
         <div id="clientsTable"></div>
       </div>
@@ -114,6 +134,46 @@
 
     let dashData = null;
     let chartInstance = null;
+    let scopeProducts = [];
+
+    const round2 = n => Math.round(n * 100) / 100;
+    const MONTHS_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
+                       'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+
+    // --- aggregazioni client-side dai dati per-cliente ---
+    const sumMonth   = (clients, ym) => clients.reduce((s,c) => s + (c.monthly?.[ym]   || 0), 0);
+    const sumQuarter = (clients, ql) => clients.reduce((s,c) => s + (c.quarterly?.[ql] || 0), 0);
+
+    function lastNMonths(currentYM, n) {
+      const [y, m] = (currentYM || '').split('-').map(Number);
+      const arr = [];
+      for (let i = n - 1; i >= 0; i--) {
+        let yy = y, mm = m - i;
+        while (mm <= 0) { mm += 12; yy--; }
+        arr.push({
+          key:   `${yy}-${String(mm).padStart(2,'0')}`,
+          label: new Date(yy, mm - 1, 1).toLocaleDateString('it-IT', {month:'short', year:'numeric'})
+        });
+      }
+      return arr;
+    }
+
+    function pctChange(cur, prev) {
+      if (!prev) return null;          // nessuna base di confronto
+      return (cur - prev) / prev * 100;
+    }
+    function deltaBadge(p) {
+      if (p === null) return '<span class="text-slate-300 text-xs">—</span>';
+      const up = p >= 0;
+      const cls = up ? 'text-emerald-600 bg-emerald-50' : 'text-red-600 bg-red-50';
+      return `<span class="text-xs font-medium px-1.5 py-0.5 rounded ${cls}">${up?'+':''}${p.toFixed(1)}%</span>`;
+    }
+    function deltaInline(p) {
+      if (p === null) return '';
+      const up = p >= 0;
+      const cls = up ? 'text-emerald-600' : 'text-red-600';
+      return `<div class="text-xs font-medium ${cls} mt-1">${up?'▲ +':'▼ '}${p.toFixed(1)}% vs trim. prec.</div>`;
+    }
 
     async function loadData() {
       try {
@@ -129,15 +189,63 @@
 
     function render(d) {
       document.getElementById('lastUpdate').textContent = 'Aggiornato: ' + d.generated_at;
+      const clients = d.clients || [];
 
-      // KPI
+      populateCountryFilter(clients);
+      document.getElementById('filterCountry').addEventListener('change', () => {
+        populateRegionFilter(clients);
+        applyFilters();
+      });
+      document.getElementById('filterRegion').addEventListener('change', applyFilters);
+      document.getElementById('filterReset').addEventListener('click', () => {
+        document.getElementById('filterCountry').value = '';
+        populateRegionFilter(clients);
+        document.getElementById('filterRegion').value = '';
+        applyFilters();
+      });
+      document.getElementById('productSearch').addEventListener('input', applyProductSearch);
+
+      applyFilters();
+      document.getElementById('loading').classList.add('hidden');
+      document.getElementById('content').classList.remove('hidden');
+    }
+
+    function filteredClients() {
+      const country = document.getElementById('filterCountry').value;
+      const region  = document.getElementById('filterRegion').value;
+      return (dashData.clients || []).filter(c =>
+        (!country || c.country === country) &&
+        (!region  || c.region  === region));
+    }
+
+    function applyFilters() {
+      const clients = filteredClients();
+      const country = document.getElementById('filterCountry').value;
+      const region  = document.getElementById('filterRegion').value;
+      const scope   = [country, region].filter(Boolean).join(' · ');
+      document.getElementById('filterScope').textContent =
+        scope ? `Ambito: ${scope}` : 'Ambito: tutti i clienti';
+
+      renderChart(clients, dashData);
+      renderKpis(clients, dashData);
+      renderMonthlyTable(clients, dashData);
+      renderClients(clients, dashData);
+      scopeProducts = computeProducts(clients);
+      applyProductSearch();
+    }
+
+    function renderKpis(clients, d) {
       const quarters = d.quarters || [];
-      const sqData   = d.summary?.quarterly || {};
+      const month  = sumMonth(clients, d.current_month);
+      const qCur   = sumQuarter(clients, quarters[0]);
+      const qPrev  = sumQuarter(clients, quarters[1]);
+      const qPrev2 = sumQuarter(clients, quarters[2]);
+      const delta  = pctChange(qCur, qPrev);
       const kpis = [
-        { label:'Mese Corrente',        sub: d.current_month_label || '', value: d.summary?.month || 0 },
-        { label:'Trimestre Corrente',   sub: quarters[0] || '',           value: sqData[quarters[0]] || 0 },
-        { label:'Trimestre Precedente', sub: quarters[1] || '',           value: sqData[quarters[1]] || 0 },
-        { label:'Due Trimestri Fa',     sub: quarters[2] || '',           value: sqData[quarters[2]] || 0 },
+        { label:'Mese Corrente',        sub:d.current_month_label||'', value:month,  delta:null },
+        { label:'Trimestre Corrente',   sub:quarters[0]||'',           value:qCur,   delta },
+        { label:'Trimestre Precedente', sub:quarters[1]||'',           value:qPrev,  delta:null },
+        { label:'Due Trimestri Fa',     sub:quarters[2]||'',           value:qPrev2, delta:null },
       ];
       document.getElementById('kpiCards').innerHTML = kpis.map((k, i) => {
         const c = KPI_COLORS[i];
@@ -148,12 +256,15 @@
               ${k.sub ? `<span class="text-xs ${c.badge} ${c.text} px-2 py-0.5 rounded-full font-medium shrink-0 ml-1">${k.sub}</span>` : ''}
             </div>
             <div class="text-2xl font-bold text-slate-800">${fmt(k.value)}</div>
+            ${deltaInline(k.delta)}
           </div>`;
       }).join('');
+    }
 
-      // Chart
-      const labels = Object.keys(d.monthly_chart || {});
-      const values = Object.values(d.monthly_chart || {});
+    function renderChart(clients, d) {
+      const ms     = lastNMonths(d.current_month, 12);
+      const labels = ms.map(x => x.label);
+      const values = ms.map(x => round2(sumMonth(clients, x.key)));
       if (chartInstance) chartInstance.destroy();
       chartInstance = new Chart(document.getElementById('monthlyChart'), {
         type: 'bar',
@@ -183,27 +294,66 @@
           }
         }
       });
+    }
 
-      // Clients + filtri Country/Region
-      const clients = d.clients || [];
-      populateCountryFilter(clients);
-      document.getElementById('filterCountry').addEventListener('change', () => {
-        populateRegionFilter(clients);
-        renderClients(clients, d);
-      });
-      document.getElementById('filterRegion').addEventListener('change', () => renderClients(clients, d));
-      renderClients(clients, d);
+    function renderMonthlyTable(clients, d) {
+      const curY  = Number((d.current_month || '').split('-')[0]) || new Date().getFullYear();
+      const prevY = curY - 1;
+      document.getElementById('yoyYears').textContent = `${prevY} vs ${curY}`;
 
-      // Products
-      renderProducts(d.products || []);
-      document.getElementById('productSearch').addEventListener('input', e => {
-        const q = e.target.value.toLowerCase();
-        renderProducts((d.products || []).filter(p =>
-          (p.code || '').toLowerCase().includes(q) || (p.name || '').toLowerCase().includes(q)));
-      });
+      let totPrev = 0, totCur = 0, rows = '';
+      for (let m = 1; m <= 12; m++) {
+        const mm    = String(m).padStart(2,'0');
+        const vPrev = sumMonth(clients, `${prevY}-${mm}`);
+        const vCur  = sumMonth(clients, `${curY}-${mm}`);
+        totPrev += vPrev; totCur += vCur;
+        rows += `
+          <tr class="border-t border-slate-100 hover:bg-slate-50 transition-colors">
+            <td class="px-6 py-2.5 text-slate-700">${MONTHS_IT[m-1]}</td>
+            <td class="px-6 py-2.5 text-right text-slate-500">${fmt(vPrev)}</td>
+            <td class="px-6 py-2.5 text-right font-medium text-slate-800">${fmt(vCur)}</td>
+            <td class="px-6 py-2.5 text-right">${deltaBadge(pctChange(vCur, vPrev))}</td>
+          </tr>`;
+      }
+      document.getElementById('monthlyTable').innerHTML = `
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="bg-slate-50 text-xs border-b border-slate-200">
+                <th class="px-6 py-3 text-left text-slate-500 font-medium">Mese</th>
+                <th class="px-6 py-3 text-right text-slate-500 font-medium">${prevY}</th>
+                <th class="px-6 py-3 text-right text-slate-500 font-medium">${curY}</th>
+                <th class="px-6 py-3 text-right text-slate-500 font-medium">Δ%</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+            <tfoot>
+              <tr class="bg-slate-50 border-t-2 border-slate-200 font-semibold">
+                <td class="px-6 py-3 text-slate-700">Totale</td>
+                <td class="px-6 py-3 text-right text-slate-500">${fmt(totPrev)}</td>
+                <td class="px-6 py-3 text-right text-slate-800">${fmt(totCur)}</td>
+                <td class="px-6 py-3 text-right">${deltaBadge(pctChange(totCur, totPrev))}</td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>`;
+    }
 
-      document.getElementById('loading').classList.add('hidden');
-      document.getElementById('content').classList.remove('hidden');
+    function computeProducts(clients) {
+      const prod = {};
+      clients.forEach(c => (c.orders || []).forEach(o => (o.items || []).forEach(it => {
+        const code = it.code || 'N/D';
+        if (!prod[code]) prod[code] = { code, name: it.name, qty: 0, total: 0 };
+        prod[code].qty   += it.qty;
+        prod[code].total += it.total;
+      })));
+      return Object.values(prod).sort((a,b) => b.total - a.total);
+    }
+
+    function applyProductSearch() {
+      const q = (document.getElementById('productSearch').value || '').toLowerCase();
+      renderProducts(scopeProducts.filter(p =>
+        (p.code || '').toLowerCase().includes(q) || (p.name || '').toLowerCase().includes(q)));
     }
 
     function populateCountryFilter(clients) {
@@ -228,14 +378,9 @@
     }
 
     function renderClients(clients, d) {
-      const country  = document.getElementById('filterCountry').value;
-      const region   = document.getElementById('filterRegion').value;
-      const filtered = clients.filter(c =>
-        (!country || c.country === country) &&
-        (!region  || c.region  === region));
-      document.getElementById('clientCount').textContent = filtered.length + ' clienti';
-      document.getElementById('clientsTable').innerHTML = filtered.length
-        ? filtered.map((c, ci) => buildClientRow(c, ci, d)).join('')
+      document.getElementById('clientCount').textContent = clients.length + ' clienti';
+      document.getElementById('clientsTable').innerHTML = clients.length
+        ? clients.map((c, ci) => buildClientRow(c, ci, d)).join('')
         : '<p class="px-6 py-8 text-slate-400 text-sm text-center">Nessun cliente per i filtri selezionati.</p>';
     }
 
