@@ -137,10 +137,17 @@
   </main>
 
   <script>
+    const MODES = {
+      A: { file: 'full.enc',      label: '' },
+      B: { file: 'triveneto.enc', label: 'Triveneto' },
+      C: { file: 'lazio.enc',     label: 'Lazio' },
+    };
     const DASH_MODE = sessionStorage.getItem('dashMode');
     const DASH_PWD  = sessionStorage.getItem('dashPwd');
-    if (!DASH_MODE || !DASH_PWD) window.location.href = 'index.html';
-    const DATA_FILE = DASH_MODE === 'B' ? 'triveneto.enc' : 'full.enc';
+    if (!DASH_MODE || !DASH_PWD || !MODES[DASH_MODE]) window.location.href = 'index.html';
+    const DASH_INFO       = MODES[DASH_MODE] || MODES.A;
+    const DATA_FILE       = DASH_INFO.file;
+    const DASH_RESTRICTED = DASH_INFO.label !== '';
 
     function logout() {
       sessionStorage.removeItem('dashMode');
@@ -276,11 +283,11 @@
 
     function render(d) {
       document.getElementById('lastUpdate').textContent =
-        (DASH_MODE === 'B' ? 'Vista: Triveneto · ' : '') + 'Aggiornato: ' + d.generated_at;
+        (DASH_INFO.label ? 'Vista: ' + DASH_INFO.label + ' · ' : '') + 'Aggiornato: ' + d.generated_at;
       const clients = d.clients || [];
 
-      // In modalità Triveneto i filtri nazione/regione sono superflui
-      if (DASH_MODE === 'B') {
+      // Nelle viste regionali i filtri nazione/regione sono superflui
+      if (DASH_RESTRICTED) {
         document.getElementById('filterCountry').classList.add('hidden');
         document.getElementById('filterRegion').classList.add('hidden');
       }

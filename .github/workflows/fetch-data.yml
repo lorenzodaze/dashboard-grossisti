@@ -31,13 +31,14 @@ jobs:
           ZOHO_REFRESH_TOKEN: ${{ secrets.ZOHO_REFRESH_TOKEN }}
           DASH_PASSWORD_A:    ${{ secrets.DASH_PASSWORD_A }}
           DASH_PASSWORD_B:    ${{ secrets.DASH_PASSWORD_B }}
+          DASH_PASSWORD_C:    ${{ secrets.DASH_PASSWORD_C }}
         run: python fetch_data.py
 
       - name: Commit e push dati
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name  "github-actions[bot]"
-          git add data/full.enc data/triveneto.enc
+          git add data/full.enc data/triveneto.enc data/lazio.enc
           git diff --staged --quiet || git commit -m "Update dashboard data - $(date -u '+%Y-%m-%d %H:%M UTC')"
           git pull --rebase
           git push
