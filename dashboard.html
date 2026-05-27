@@ -592,6 +592,27 @@
         `<span class="text-slate-400 text-xs">${q}:&nbsp;<span class="font-semibold text-slate-600">${fmt(c.quarterly?.[q]||0)}</span></span>`
       ).join('<span class="text-slate-200 mx-1">|</span>');
 
+      // Confronto mese corrente e trimestre corrente con lo stesso periodo dell'anno precedente
+      const curMonthKey = d.current_month || '';
+      const [cYear, cMon] = curMonthKey.split('-');
+      const prevYear      = Number(cYear) - 1;
+      const mCur  = c.monthly?.[curMonthKey] || 0;
+      const mPrev = c.monthly?.[`${prevYear}-${cMon}`] || 0;
+      const curQ  = (d.quarters || [])[0] || '';
+      const qp    = curQ.split(' ');                       // ["Q2","2026"]
+      const prevQ = qp.length === 2 ? `${qp[0]} ${Number(qp[1]) - 1}` : '';
+      const qCur  = c.quarterly?.[curQ]  || 0;
+      const qPrev = c.quarterly?.[prevQ] || 0;
+      const monthLabel = d.current_month_label || 'Mese corrente';
+
+      const compareBlock = (label, cur, prev) => `
+        <div>
+          <div class="text-xs text-slate-400 mb-0.5">${label}</div>
+          <div class="text-base font-bold text-slate-800 leading-tight">${fmt(cur)}</div>
+          <div class="text-xs text-slate-400">${fmt(prev)} <span class="text-slate-300">(${prevYear})</span></div>
+          <div class="mt-1">${deltaBadge(pctChange(cur, prev))}</div>
+        </div>`;
+
       const ordersRows = orders.map((o, oi) => {
         const itemRows = (o.items || []).map(it => `
           <tr class="bg-slate-50 text-xs border-t border-slate-100">
@@ -649,9 +670,9 @@
               </div>
               <div class="ml-5 mt-1 flex gap-3 flex-wrap">${qBadges}</div>
             </div>
-            <div class="text-right ml-4 shrink-0">
-              <div class="text-base font-bold text-slate-800">${fmt(c.monthly?.[dashData.current_month]||0)}</div>
-              <div class="text-xs text-slate-400">mese corrente</div>
+            <div class="text-right ml-4 shrink-0 flex gap-5">
+              ${compareBlock(monthLabel, mCur, mPrev)}
+              ${compareBlock(curQ || 'Trimestre', qCur, qPrev)}
             </div>
           </div>
           <table class="w-full hidden" id="cl-${ci}">
