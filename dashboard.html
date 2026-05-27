@@ -6,6 +6,7 @@
   <title>Dashboard Grossisti</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2"></script>
   <style>
     .fade-in { animation: fadeIn .3s ease; }
     @keyframes fadeIn { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
@@ -75,9 +76,19 @@
 
       <!-- Chart -->
       <div class="bg-white rounded-xl border border-slate-200 p-6">
-        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
-          Fatturato mensile – ultimi 12 mesi
-        </h2>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+            Fatturato – da gennaio 2025
+          </h2>
+          <select id="chartMode"
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="A">Mensile</option>
+            <option value="B">Mensile – confronto anni</option>
+            <option value="C">Trimestrale</option>
+            <option value="D">Trimestrale – confronto anni</option>
+          </select>
+        </div>
         <canvas id="monthlyChart" height="70"></canvas>
       </div>
 
@@ -165,10 +176,39 @@
     let chartInstance = null;
     let productChartInstance = null;
     let scopeProducts = [];
+    let scopeClients  = [];
+
+    if (window.ChartDataLabels) Chart.register(ChartDataLabels);
 
     const round2 = n => Math.round(n * 100) / 100;
     const MONTHS_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
                        'Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+    const MONTHS_SHORT = ['Gen','Feb','Mar','Apr','Mag','Giu',
+                          'Lug','Ago','Set','Ott','Nov','Dic'];
+
+    // Tutti i mesi da gennaio 2025 al mese corrente
+    function monthsFrom2025(currentYM) {
+      const [cy, cm] = (currentYM || '').split('-').map(Number);
+      const arr = [];
+      let y = 2025, m = 1;
+      while (y < cy || (y === cy && m <= cm)) {
+        arr.push({ y, m, key:`${y}-${String(m).padStart(2,'0')}` });
+        m++; if (m > 12) { m = 1; y++; }
+      }
+      return arr;
+    }
+    // Tutti i trimestri da Q1 2025 al trimestre corrente
+    function quartersFrom2025(currentYM) {
+      const [cy, cm] = (currentYM || '').split('-').map(Number);
+      const cq = Math.floor((cm - 1) / 3) + 1;
+      const arr = [];
+      let y = 2025, q = 1;
+      while (y < cy || (y === cy && q <= cq)) {
+        arr.push({ y, q, label:`Q${q} ${y}` });
+        q++; if (q > 4) { q = 1; y++; }
+      }
+      return arr;
+    }
 
     // --- aggregazioni client-side dai dati per-cliente ---
     const sumMonth   = (clients, ym) => clients.reduce((s,c) => s + (c.monthly?.[ym]   || 0), 0);
@@ -250,6 +290,8 @@
         applyFilters();
       });
       document.getElementById('productSearch').addEventListener('input', applyProductSearch);
+      document.getElementById('chartMode').addEventListener('change', () =>
+        renderChart(scopeClients, dashData));
 
       applyFilters();
       document.getElementById('loading').classList.add('hidden');
@@ -277,6 +319,7 @@
       document.getElementById('filterScope').textContent =
         scope ? `Ambito: ${scope}` : 'Ambito: tutti i clienti';
 
+      scopeClients = clients;
       renderChart(clients, dashData);
       renderKpis(clients, dashData);
       renderMonthlyTable(clients, dashData);
@@ -313,28 +356,67 @@
       }).join('');
     }
 
+    const YEAR_COLORS = ['rgba(148,163,184,0.75)', 'rgba(37,99,235,0.8)',
+                         'rgba(16,185,129,0.8)'];
+
     function renderChart(clients, d) {
-      const ms     = lastNMonths(d.current_month, 12);
-      const labels = ms.map(x => x.label);
-      const values = ms.map(x => round2(sumMonth(clients, x.key)));
+      const mode  = document.getElementById('chartMode').value || 'A';
+      const years = [...new Set(monthsFrom2025(d.current_month).map(x => x.y))];
+      let labels, datasets, grouped = false;
+
+      if (mode === 'A') {                       // mensile cronologico
+        const ms = monthsFrom2025(d.current_month);
+        labels = ms.map(x => `${MONTHS_SHORT[x.m-1]} ${String(x.y).slice(2)}`);
+        const values = ms.map(x => round2(sumMonth(clients, x.key)));
+        datasets = [{
+          data: values,
+          backgroundColor: values.map((_, i) => i === values.length - 1
+            ? 'rgba(37,99,235,0.9)' : 'rgba(37,99,235,0.45)'),
+          borderRadius: 5, borderSkipped: false,
+        }];
+      } else if (mode === 'C') {                // trimestrale cronologico
+        const qs = quartersFrom2025(d.current_month);
+        labels = qs.map(x => `Q${x.q} ${String(x.y).slice(2)}`);
+        const values = qs.map(x => round2(sumQuarter(clients, x.label)));
+        datasets = [{
+          data: values,
+          backgroundColor: values.map((_, i) => i === values.length - 1
+            ? 'rgba(37,99,235,0.9)' : 'rgba(37,99,235,0.45)'),
+          borderRadius: 5, borderSkipped: false,
+        }];
+      } else if (mode === 'B') {                // mensile, anni affiancati
+        grouped = true;
+        labels = MONTHS_SHORT;
+        datasets = years.map((yr, idx) => ({
+          label: String(yr),
+          data: Array.from({length:12}, (_, i) =>
+            round2(sumMonth(clients, `${yr}-${String(i+1).padStart(2,'0')}`))),
+          backgroundColor: YEAR_COLORS[idx % YEAR_COLORS.length],
+          borderRadius: 5, borderSkipped: false,
+        }));
+      } else {                                  // mode D: trimestrale, anni affiancati
+        grouped = true;
+        labels = ['Q1','Q2','Q3','Q4'];
+        datasets = years.map((yr, idx) => ({
+          label: String(yr),
+          data: [1,2,3,4].map(q => round2(sumQuarter(clients, `Q${q} ${yr}`))),
+          backgroundColor: YEAR_COLORS[idx % YEAR_COLORS.length],
+          borderRadius: 5, borderSkipped: false,
+        }));
+      }
+
       if (chartInstance) chartInstance.destroy();
       chartInstance = new Chart(document.getElementById('monthlyChart'), {
         type: 'bar',
-        data: {
-          labels,
-          datasets: [{
-            data: values,
-            backgroundColor: labels.map((_, i) => i === labels.length - 1
-              ? 'rgba(37,99,235,0.9)' : 'rgba(37,99,235,0.45)'),
-            borderRadius: 5,
-            borderSkipped: false,
-          }]
-        },
+        data: { labels, datasets },
         options: {
           responsive: true,
           plugins: {
-            legend: { display: false },
-            tooltip: { callbacks: { label: ctx => ' ' + fmt(ctx.raw) } }
+            legend: { display: grouped, position: 'top', labels: { boxWidth: 12 } },
+            datalabels: { display: false },
+            tooltip: { callbacks: {
+              label: ctx => ' ' + (ctx.dataset.label ? ctx.dataset.label + ': ' : '') + fmt(ctx.raw)
+            } }
           },
           scales: {
             x: { grid: { display: false } },
@@ -444,7 +526,13 @@
 
     function renderProductChart(products) {
       const top    = products.slice(0, 4);
-      const labels = top.map(p => p.code || 'N/D');
+      // etichetta asse X: codice su una riga, nome del prodotto fra parentesi sotto
+      const labels = top.map(p => {
+        const code = p.code || 'N/D';
+        let name = p.name || '';
+        if (name.length > 24) name = name.slice(0, 23) + '…';
+        return name ? [code, `(${name})`] : [code];
+      });
       const values = top.map(p => round2(p.total));
       if (productChartInstance) productChartInstance.destroy();
       productChartInstance = new Chart(document.getElementById('productChart'), {
@@ -460,11 +548,21 @@
         },
         options: {
           responsive: true,
+          layout: { padding: { top: 24 } },
           plugins: {
             legend: { display: false },
+            datalabels: {
+              display: true,
+              anchor: 'end',
+              align: 'end',
+              color: '#334155',
+              font: { weight: '600', size: 12 },
+              formatter: (v, ctx) => fmtN(top[ctx.dataIndex].qty) + ' pz'
+            },
             tooltip: { callbacks: {
               title: items => top[items[0].dataIndex]?.name || '',
-              label: ctx => ' ' + fmt(ctx.raw)
+              label: ctx => ' Fatturato: ' + fmt(ctx.raw),
+              afterLabel: ctx => 'Quantità: ' + fmtN(top[ctx.dataIndex].qty) + ' pz'
             } }
           },
           scales: {
