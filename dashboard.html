@@ -161,9 +161,9 @@
     }
 
     const fmt = n =>
-      '€ ' + Number(n).toLocaleString('it-IT', {minimumFractionDigits:2, maximumFractionDigits:2});
+      '€ ' + fmtDec(n);
     const fmtN = n =>
-      Number(n).toLocaleString('it-IT', {maximumFractionDigits:2});
+      fmtNum(n);
 
     const KPI_COLORS = [
       {bg:'bg-blue-50',   text:'text-blue-600',   badge:'bg-blue-100'},
@@ -179,6 +179,22 @@
     let scopeClients  = [];
 
     if (window.ChartDataLabels) Chart.register(ChartDataLabels);
+
+    // Formattazione con punto separatore delle migliaia (indipendente dal browser)
+    function groupThousands(s) { return s.replace(/\B(?=(\d{3})+(?!\d))/g, '.'); }
+    function fmtDec(n) {                    // "1.234.567,89" (senza simbolo)
+      n = Number(n) || 0; const neg = n < 0; n = Math.abs(n);
+      const [i, d] = n.toFixed(2).split('.');
+      return (neg ? '-' : '') + groupThousands(i) + ',' + d;
+    }
+    function fmtNum(n) {                    // numero: "1.234" o "1.234,5"
+      n = Number(n) || 0; const neg = n < 0; n = Math.abs(n);
+      const [i, d] = n.toFixed(2).split('.');
+      let out = groupThousands(i);
+      if (d !== '00') out += ',' + d.replace(/0$/, '');
+      return (neg ? '-' : '') + out;
+    }
+    function fmtAxisNum(v) { return groupThousands(String(Math.round(Number(v) || 0))); }
 
     const round2 = n => Math.round(n * 100) / 100;
     const MONTHS_IT = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno',
@@ -422,7 +438,7 @@
             x: { grid: { display: false } },
             y: {
               beginAtZero: true,
-              ticks: { callback: v => '€' + Number(v).toLocaleString('it-IT') },
+              ticks: { callback: v => '€' + fmtAxisNum(v) },
               grid: { color: 'rgba(0,0,0,.04)' }
             }
           }
@@ -569,7 +585,7 @@
             x: { grid: { display: false } },
             y: {
               beginAtZero: true,
-              ticks: { callback: v => '€' + Number(v).toLocaleString('it-IT') },
+              ticks: { callback: v => '€' + fmtAxisNum(v) },
               grid: { color: 'rgba(0,0,0,.04)' }
             }
           }
@@ -586,7 +602,7 @@
 
     function buildClientRow(c, ci, d) {
       const orders  = (c.orders || []).slice().sort((a,b) => (b.ship||b.date).localeCompare(a.ship||a.date));
-      const qLabels = (d.quarters || []).slice(0,3);
+      const qLabels = (d.quarters || []).slice(0,3).reverse();  // ordine cronologico (più vecchio → recente)
 
       const qBadges = qLabels.map(q =>
         `<span class="text-slate-400 text-xs">${q}:&nbsp;<span class="font-semibold text-slate-600">${fmt(c.quarterly?.[q]||0)}</span></span>`
