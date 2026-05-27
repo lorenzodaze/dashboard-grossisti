@@ -1,8 +1,33 @@
 import os
 import json
+import base64
 import requests
 import calendar
 from datetime import datetime, date
+from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
+from cryptography.hazmat.primitives import hashes
+from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+
+PBKDF2_ITERATIONS = 200000
+
+
+def encrypt_json(obj, password):
+    """Cifra un oggetto JSON con AES-256-GCM; chiave derivata dalla password
+    via PBKDF2-SHA256. Compatibile con la Web Crypto API del browser."""
+    salt = os.urandom(16)
+    kdf  = PBKDF2HMAC(algorithm=hashes.SHA256(), length=32, salt=salt,
+                      iterations=PBKDF2_ITERATIONS)
+    key  = kdf.derive(password.encode('utf-8'))
+    iv   = os.urandom(12)
+    data = json.dumps(obj, ensure_ascii=False, default=str).encode('utf-8')
+    ct   = AESGCM(key).encrypt(iv, data, None)
+    return {
+        'v':    1,
+        'iter': PBKDF2_ITERATIONS,
+        'salt': base64.b64encode(salt).decode(),
+        'iv':   base64.b64encode(iv).decode(),
+        'ct':   base64.b64encode(ct).decode(),
+    }
 
 CLIENT_ID     = os.environ.get('ZOHO_CLIENT_ID', '')
 CLIENT_SECRET = os.environ.get('ZOHO_CLIENT_SECRET', '')
@@ -224,59 +249,36 @@ def main():
             'items': items_out,
         })
 
-    # --- Grafico mensile (ultimi 12 mesi) ---
-    monthly_chart = {}
-    for i in range(11, -1, -1):
-        year  = today.year
-        month = today.month - i
-        while month <= 0:
-            month += 12
-            year  -= 1
-        m_str = f"{year:04d}-{month:02d}"
-        label = date(year, month, 1).strftime('%b %Y')
-        monthly_chart[label] = round(
-            sum(c['monthly'].get(m_str, 0) for c in clients.values()), 2)
+    # La dashboard ricalcola tutto lato browser dai dati per-cliente, quindi
+    # l'output contiene solo i metadati di periodo e l'elenco clienti.
+    def build_output(client_list):
+        return {
+            'generated_at':        datetime.now().strftime('%d/%m/%Y %H:%M'),
+            'current_month':       current_month,
+            'current_month_label': today.strftime('%B %Y').capitalize(),
+            'quarters':            quarters,
+            'clients':             client_list,
+        }
 
-    # --- Riepilogo ---
-    summary_q, summary_month = {}, 0
-    for c in clients.values():
-        summary_month += c['monthly'].get(current_month, 0)
-        for ql, t in c['quarterly'].items():
-            summary_q[ql] = summary_q.get(ql, 0) + t
+    all_clients       = list(clients.values())
+    triveneto_clients = [c for c in all_clients if c.get('region') == 'Triveneto']
 
-    # --- Totali prodotti ---
-    products = {}
-    for c in clients.values():
-        for o in c['orders']:
-            for it in o['items']:
-                code = it['code'] or 'N/D'
-                if code not in products:
-                    products[code] = {'code': code, 'name': it['name'], 'qty': 0.0, 'total': 0.0}
-                products[code]['qty']   += it['qty']
-                products[code]['total'] += it['total']
+    full_output = build_output(all_clients)
+    triv_output = build_output(triveneto_clients)
 
-    output = {
-        'generated_at':        datetime.now().strftime('%d/%m/%Y %H:%M'),
-        'current_month':       current_month,
-        'current_month_label': today.strftime('%B %Y').capitalize(),
-        'current_quarter':     quarters[0] if quarters else '',
-        'quarters':            quarters,
-        'summary':             {'month': round(summary_month, 2), 'quarterly': summary_q},
-        'monthly_chart':       monthly_chart,
-        'clients':             list(clients.values()),
-        'products':            sorted(products.values(), key=lambda x: -x['total']),
-    }
+    pwd_a = os.environ.get('DASH_PASSWORD_A', '')
+    pwd_b = os.environ.get('DASH_PASSWORD_B', '')
+    if not pwd_a or not pwd_b:
+        raise SystemExit("ERRORE: imposta i secret DASH_PASSWORD_A e DASH_PASSWORD_B.")
 
     os.makedirs('data', exist_ok=True)
-    with open('data/dashboard.json', 'w', encoding='utf-8') as f:
-        json.dump(output, f, ensure_ascii=False, indent=2, default=str)
+    with open('data/full.enc', 'w', encoding='utf-8') as f:
+        json.dump(encrypt_json(full_output, pwd_a), f)
+    with open('data/triveneto.enc', 'w', encoding='utf-8') as f:
+        json.dump(encrypt_json(triv_output, pwd_b), f)
 
-    print(f"\nSaved data/dashboard.json")
-    print(f"Clients : {len(clients)}")
-    print(f"Products: {len(products)}")
-    print(f"Month total  : €{summary_month:,.2f}")
-    if quarters:
-        print(f"Quarter total: €{summary_q.get(quarters[0], 0):,.2f}")
+    print(f"\nSaved data/full.enc ({len(all_clients)} clienti) e "
+          f"data/triveneto.enc ({len(triveneto_clients)} clienti)")
 
 
 if __name__ == '__main__':

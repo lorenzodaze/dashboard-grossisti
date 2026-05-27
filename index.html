@@ -6,9 +6,9 @@
   <title>Dashboard Grossisti – Accesso</title>
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-slate-100 min-h-screen flex items-center justify-center">
+<body class="bg-slate-100 min-h-screen flex items-center justify-center p-4">
 
-  <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-sm mx-4">
+  <div class="w-full max-w-3xl">
     <div class="text-center mb-8">
       <div class="w-14 h-14 bg-blue-600 rounded-xl mx-auto mb-4 flex items-center justify-center">
         <svg class="w-7 h-7 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -17,49 +17,82 @@
         </svg>
       </div>
       <h1 class="text-2xl font-bold text-slate-800">Dashboard Grossisti</h1>
-      <p class="text-slate-500 text-sm mt-1">Inserisci la password per accedere</p>
+      <p class="text-slate-500 text-sm mt-1">Scegli un accesso e inserisci la password</p>
     </div>
 
-    <div id="error" class="hidden bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-4 py-3 mb-4">
-      Password errata. Riprova.
-    </div>
+    <div class="grid sm:grid-cols-2 gap-4">
 
-    <form id="loginForm">
-      <label class="block text-sm font-medium text-slate-700 mb-1">Password</label>
-      <input type="password" id="password"
-        class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-4"
-        placeholder="••••••••" autofocus>
-      <button type="submit"
-        class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2.5 rounded-lg transition-colors">
-        Accedi
-      </button>
-    </form>
+      <!-- Opzione A -->
+      <div class="bg-white rounded-2xl shadow-lg p-6 flex flex-col">
+        <h2 class="text-lg font-bold text-slate-800">Tutti i dati</h2>
+        <p class="text-slate-500 text-sm mt-1 mb-4 flex-1">Accesso completo a tutte le nazioni e regioni.</p>
+        <div id="errA" class="hidden bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-3 py-2 mb-3">
+          Password errata. Riprova.
+        </div>
+        <form onsubmit="return login(event,'A','full.enc','pwdA','errA','btnA')">
+          <input type="password" id="pwdA" placeholder="Password"
+            class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-3">
+          <button id="btnA" type="submit"
+            class="w-full bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50">
+            Accedi
+          </button>
+        </form>
+      </div>
+
+      <!-- Opzione B -->
+      <div class="bg-white rounded-2xl shadow-lg p-6 flex flex-col">
+        <h2 class="text-lg font-bold text-slate-800">Triveneto</h2>
+        <p class="text-slate-500 text-sm mt-1 mb-4 flex-1">Solo dati di Veneto, Friuli-Venezia Giulia e Trentino-Alto Adige.</p>
+        <div id="errB" class="hidden bg-red-50 border border-red-200 text-red-600 text-sm rounded-lg px-3 py-2 mb-3">
+          Password errata. Riprova.
+        </div>
+        <form onsubmit="return login(event,'B','triveneto.enc','pwdB','errB','btnB')">
+          <input type="password" id="pwdB" placeholder="Password"
+            class="w-full border border-slate-300 rounded-lg px-4 py-2.5 text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent mb-3">
+          <button id="btnB" type="submit"
+            class="w-full bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-semibold py-2.5 rounded-lg transition-colors disabled:opacity-50">
+            Accedi
+          </button>
+        </form>
+      </div>
+
+    </div>
   </div>
 
   <script>
-    const HASH = '66c403afea4fb1a835f9df1f0af6f0a83b30005de46217327a155767dbbfa1be';
-
-    async function sha256(str) {
-      const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
-      return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+    async function decryptEnc(enc, password) {
+      const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+      const salt = b64(enc.salt), iv = b64(enc.iv), ct = b64(enc.ct);
+      const baseKey = await crypto.subtle.importKey(
+        'raw', new TextEncoder().encode(password), 'PBKDF2', false, ['deriveKey']);
+      const key = await crypto.subtle.deriveKey(
+        { name:'PBKDF2', salt, iterations: enc.iter, hash:'SHA-256' },
+        baseKey, { name:'AES-GCM', length:256 }, false, ['decrypt']);
+      const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv }, key, ct);
+      return JSON.parse(new TextDecoder().decode(pt));   // lancia errore se password errata
     }
 
-    document.getElementById('loginForm').addEventListener('submit', async e => {
+    async function login(e, mode, file, pwdId, errId, btnId) {
       e.preventDefault();
-      const pwd  = document.getElementById('password').value;
-      const hash = await sha256(pwd);
-      if (hash === HASH) {
-        sessionStorage.setItem('auth', '1');
+      const pwd = document.getElementById(pwdId).value;
+      const btn = document.getElementById(btnId);
+      const err = document.getElementById(errId);
+      err.classList.add('hidden');
+      btn.disabled = true; btn.textContent = 'Verifica...';
+      try {
+        const r = await fetch('data/' + file + '?t=' + Date.now());
+        if (!r.ok) throw new Error('fetch');
+        const enc = await r.json();
+        await decryptEnc(enc, pwd);            // valida la password
+        sessionStorage.setItem('dashMode', mode);
+        sessionStorage.setItem('dashPwd', pwd);
         window.location.href = 'dashboard.html';
-      } else {
-        document.getElementById('error').classList.remove('hidden');
-        document.getElementById('password').value = '';
-        document.getElementById('password').focus();
+      } catch (ex) {
+        err.classList.remove('hidden');
+        document.getElementById(pwdId).value = '';
+        btn.disabled = false; btn.textContent = 'Accedi';
       }
-    });
-
-    if (sessionStorage.getItem('auth') === '1') {
-      window.location.href = 'dashboard.html';
+      return false;
     }
   </script>
 </body>
