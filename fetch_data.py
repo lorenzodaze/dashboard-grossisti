@@ -64,6 +64,22 @@ def qlabel(q, y):
     return f"Q{q} {y}"
 
 
+# Province della Lombardia orientale; le restanti finiscono in "Lombardia Ovest"
+LOMBARDIA_EST = {'Bergamo', 'Brescia', 'Cremona', 'Mantova'}
+# Regioni raggruppate sotto "Triveneto"
+TRIVENETO = {'Veneto', 'Friuli-Venezia Giulia', 'Trentino-Alto Adige'}
+
+
+def remap_region(region, province):
+    region   = (region or '').strip()
+    province = (province or '').strip()
+    if region == 'Lombardia':
+        return 'Lombardia Est' if province in LOMBARDIA_EST else 'Lombardia Ovest'
+    if region in TRIVENETO:
+        return 'Triveneto'
+    return region
+
+
 def main():
     today = date.today()
     token = get_token()
@@ -72,13 +88,13 @@ def main():
     # --- Wholesaler accounts ---
     print("Fetching wholesaler accounts...")
     accounts = search_records(token, 'Accounts',
-        '(Client_type:equals:Wholesaler)', 'id,Account_Name,Country,Region')
+        '(Client_type:equals:Wholesaler)', 'id,Account_Name,Country,Region,State_Province')
     print(f"Wholesaler accounts: {len(accounts)}")
     wholesaler_ids = {a['id'] for a in accounts}
     acct_info      = {a['id']: {
         'name':    a.get('Account_Name', '') or '',
         'country': a.get('Country', '') or '',
-        'region':  a.get('Region', '') or '',
+        'region':  remap_region(a.get('Region', ''), a.get('State_Province', '')),
     } for a in accounts}
 
     if not wholesaler_ids:
@@ -90,7 +106,7 @@ def main():
     #     via lo storico piu' vecchio). Si parte da gennaio di 2 anni fa.
     order_fields = ('id,SO_Number,Account_Name,Date,Shipping_Date,'
                     'Sub_Total,Checkout_Discount,Checkout_discount_value')
-    start_year = today.year - 2
+    start_year = 2025
     print(f"Fetching orders month by month from {start_year}-01 to {today.strftime('%Y-%m')}...")
     all_orders = []
     y, m = start_year, 1

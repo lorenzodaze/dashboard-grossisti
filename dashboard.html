@@ -60,6 +60,11 @@
                    focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">Tutte le regioni</option>
           </select>
+          <select id="filterClient"
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Tutti i clienti</option>
+          </select>
           <button id="filterReset"
             class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
             Azzera
@@ -74,6 +79,14 @@
           Fatturato mensile – ultimi 12 mesi
         </h2>
         <canvas id="monthlyChart" height="70"></canvas>
+      </div>
+
+      <!-- Top products chart -->
+      <div class="bg-white rounded-xl border border-slate-200 p-6">
+        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
+          Top 4 prodotti per fatturato
+        </h2>
+        <canvas id="productChart" height="70"></canvas>
       </div>
 
       <!-- KPI Cards -->
@@ -134,6 +147,7 @@
 
     let dashData = null;
     let chartInstance = null;
+    let productChartInstance = null;
     let scopeProducts = [];
 
     const round2 = n => Math.round(n * 100) / 100;
@@ -192,15 +206,23 @@
       const clients = d.clients || [];
 
       populateCountryFilter(clients);
+      populateClientFilter(clients);
       document.getElementById('filterCountry').addEventListener('change', () => {
         populateRegionFilter(clients);
+        populateClientFilter(clients);
         applyFilters();
       });
-      document.getElementById('filterRegion').addEventListener('change', applyFilters);
+      document.getElementById('filterRegion').addEventListener('change', () => {
+        populateClientFilter(clients);
+        applyFilters();
+      });
+      document.getElementById('filterClient').addEventListener('change', applyFilters);
       document.getElementById('filterReset').addEventListener('click', () => {
         document.getElementById('filterCountry').value = '';
         populateRegionFilter(clients);
         document.getElementById('filterRegion').value = '';
+        populateClientFilter(clients);
+        document.getElementById('filterClient').value = '';
         applyFilters();
       });
       document.getElementById('productSearch').addEventListener('input', applyProductSearch);
@@ -213,16 +235,21 @@
     function filteredClients() {
       const country = document.getElementById('filterCountry').value;
       const region  = document.getElementById('filterRegion').value;
+      const client  = document.getElementById('filterClient').value;
       return (dashData.clients || []).filter(c =>
         (!country || c.country === country) &&
-        (!region  || c.region  === region));
+        (!region  || c.region  === region) &&
+        (!client  || c.id      === client));
     }
 
     function applyFilters() {
       const clients = filteredClients();
       const country = document.getElementById('filterCountry').value;
       const region  = document.getElementById('filterRegion').value;
-      const scope   = [country, region].filter(Boolean).join(' · ');
+      const clientId= document.getElementById('filterClient').value;
+      const clientName = clientId
+        ? (dashData.clients.find(c => c.id === clientId) || {}).name : '';
+      const scope   = [country, region, clientName].filter(Boolean).join(' · ');
       document.getElementById('filterScope').textContent =
         scope ? `Ambito: ${scope}` : 'Ambito: tutti i clienti';
 
@@ -231,6 +258,7 @@
       renderMonthlyTable(clients, dashData);
       renderClients(clients, dashData);
       scopeProducts = computeProducts(clients);
+      renderProductChart(scopeProducts);
       applyProductSearch();
     }
 
@@ -375,6 +403,56 @@
       sel.innerHTML = '<option value="">Tutte le regioni</option>' +
         regions.map(r => `<option value="${r}">${r}</option>`).join('');
       sel.value = regions.includes(cur) ? cur : '';
+    }
+
+    function populateClientFilter(clients) {
+      const country = document.getElementById('filterCountry').value;
+      const region  = document.getElementById('filterRegion').value;
+      const sel     = document.getElementById('filterClient');
+      const cur     = sel.value;
+      const list    = clients
+        .filter(c => (!country || c.country === country) && (!region || c.region === region))
+        .sort((a,b) => (a.name||'').localeCompare(b.name||''));
+      sel.innerHTML = '<option value="">Tutti i clienti</option>' +
+        list.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      sel.value = list.some(c => c.id === cur) ? cur : '';
+    }
+
+    function renderProductChart(products) {
+      const top    = products.slice(0, 4);
+      const labels = top.map(p => p.code || 'N/D');
+      const values = top.map(p => round2(p.total));
+      if (productChartInstance) productChartInstance.destroy();
+      productChartInstance = new Chart(document.getElementById('productChart'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            backgroundColor: 'rgba(16,185,129,0.7)',
+            borderRadius: 5,
+            borderSkipped: false,
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: false },
+            tooltip: { callbacks: {
+              title: items => top[items[0].dataIndex]?.name || '',
+              label: ctx => ' ' + fmt(ctx.raw)
+            } }
+          },
+          scales: {
+            x: { grid: { display: false } },
+            y: {
+              beginAtZero: true,
+              ticks: { callback: v => '€' + Number(v).toLocaleString('it-IT') },
+              grid: { color: 'rgba(0,0,0,.04)' }
+            }
+          }
+        }
+      });
     }
 
     function renderClients(clients, d) {
