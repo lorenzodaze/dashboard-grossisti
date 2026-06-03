@@ -66,6 +66,14 @@
                    focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="">Tutti i clienti</option>
           </select>
+          <span class="text-xs text-slate-400 ml-1">Da</span>
+          <input type="date" id="filterFrom"
+            class="border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <span class="text-xs text-slate-400">A</span>
+          <input type="date" id="filterTo"
+            class="border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
           <button id="filterReset"
             class="text-xs text-slate-400 hover:text-slate-600 px-2 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
             Azzera
@@ -304,12 +312,16 @@
         applyFilters();
       });
       document.getElementById('filterClient').addEventListener('change', applyFilters);
+      document.getElementById('filterFrom').addEventListener('change', applyFilters);
+      document.getElementById('filterTo').addEventListener('change', applyFilters);
       document.getElementById('filterReset').addEventListener('click', () => {
         document.getElementById('filterCountry').value = '';
         populateRegionFilter(clients);
         document.getElementById('filterRegion').value = '';
         populateClientFilter(clients);
         document.getElementById('filterClient').value = '';
+        document.getElementById('filterFrom').value = '';
+        document.getElementById('filterTo').value = '';
         applyFilters();
       });
       document.getElementById('productSearch').addEventListener('input', applyProductSearch);
@@ -321,14 +333,42 @@
       document.getElementById('content').classList.remove('hidden');
     }
 
+    // Costruisce una "vista" del cliente limitata agli ordini nel range di date,
+    // ricalcolando monthly e quarterly su quel sottoinsieme.
+    function clientInRange(c, from, to) {
+      if (!from && !to) return c;
+      const monthly = {}, quarterly = {};
+      const orders = (c.orders || []).filter(o => {
+        const d = o.ship || o.date;
+        if (!d) return false;
+        if (from && d < from) return false;
+        if (to   && d > to)   return false;
+        return true;
+      });
+      orders.forEach(o => {
+        const d = o.ship || o.date;
+        const ym = d.substring(0, 7);
+        const [y, m] = d.split('-').map(Number);
+        const ql = `Q${Math.floor((m - 1) / 3) + 1} ${y}`;
+        monthly[ym]   = (monthly[ym]   || 0) + (o.total || 0);
+        quarterly[ql] = (quarterly[ql] || 0) + (o.total || 0);
+      });
+      return { ...c, orders, monthly, quarterly };
+    }
+
     function filteredClients() {
       const country = document.getElementById('filterCountry').value;
       const region  = document.getElementById('filterRegion').value;
       const client  = document.getElementById('filterClient').value;
-      return (dashData.clients || []).filter(c =>
-        (!country || c.country === country) &&
-        (!region  || c.region  === region) &&
-        (!client  || c.id      === client));
+      const from    = document.getElementById('filterFrom').value;
+      const to      = document.getElementById('filterTo').value;
+      return (dashData.clients || [])
+        .filter(c =>
+          (!country || c.country === country) &&
+          (!region  || c.region  === region) &&
+          (!client  || c.id      === client))
+        .map(c => clientInRange(c, from, to))
+        .filter(c => !(from || to) || (c.orders && c.orders.length > 0));
     }
 
     function applyFilters() {
@@ -338,7 +378,10 @@
       const clientId= document.getElementById('filterClient').value;
       const clientName = clientId
         ? (dashData.clients.find(c => c.id === clientId) || {}).name : '';
-      const scope   = [country, region, clientName].filter(Boolean).join(' · ');
+      const from = document.getElementById('filterFrom').value;
+      const to   = document.getElementById('filterTo').value;
+      const dateLbl = (from || to) ? `${from || '…'} → ${to || 'oggi'}` : '';
+      const scope   = [country, region, clientName, dateLbl].filter(Boolean).join(' · ');
       document.getElementById('filterScope').textContent =
         scope ? `Ambito: ${scope}` : 'Ambito: tutti i clienti';
 
