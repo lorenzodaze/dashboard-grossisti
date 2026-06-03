@@ -109,7 +109,7 @@
 
       <!-- Top products chart -->
       <div class="bg-white rounded-xl border border-slate-200 p-6">
-        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4" data-i18n="top4Products">
+        <h2 id="productChartTitle" class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4" data-i18n="top4Products">
           Top 4 prodotti per fatturato (dal 2026)
         </h2>
         <canvas id="productChart" height="70"></canvas>
@@ -117,7 +117,7 @@
 
       <!-- Revenue by product group -->
       <div class="bg-white rounded-xl border border-slate-200 p-6">
-        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4" data-i18n="revenueByGroup">
+        <h2 id="groupChartTitle" class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4" data-i18n="revenueByGroup">
           Fatturato per gruppo prodotto (dal 2026)
         </h2>
         <canvas id="groupChart" height="70"></canvas>
@@ -186,7 +186,9 @@
         monthly: 'Mensile', monthlyYoY: 'Mensile – confronto anni',
         quarterly: 'Trimestrale', quarterlyYoY: 'Trimestrale – confronto anni',
         top4Products: 'Top 4 prodotti per fatturato (dal 2026)',
+        top4ProductsRange: 'Top 4 prodotti per fatturato',
         revenueByGroup: 'Fatturato per gruppo prodotto (dal 2026)',
+        revenueByGroupRange: 'Fatturato per gruppo prodotto',
         monthlyComparison: 'Confronto mensile',
         ordersByClient: 'Ordini per Cliente', productsOrdered: 'Prodotti Ordinati',
         searchProduct: 'Cerca codice o nome...',
@@ -216,7 +218,9 @@
         monthly: 'Monthly', monthlyYoY: 'Monthly – year comparison',
         quarterly: 'Quarterly', quarterlyYoY: 'Quarterly – year comparison',
         top4Products: 'Top 4 products by revenue (from 2026)',
+        top4ProductsRange: 'Top 4 products by revenue',
         revenueByGroup: 'Revenue by product group (from 2026)',
+        revenueByGroupRange: 'Revenue by product group',
         monthlyComparison: 'Monthly comparison',
         ordersByClient: 'Orders by Client', productsOrdered: 'Products ordered',
         searchProduct: 'Search by code or name...',
@@ -518,17 +522,22 @@
       scopeProducts = computeProducts(clients);
       applyProductSearch();
 
-      // Grafici prodotti/gruppi: sempre dal 2026 (ignorando il filtro data globale)
-      const clients2026 = (dashData.clients || [])
+      // Grafici prodotti/gruppi: default dal 2026; se l'utente imposta un range
+      // di date, prevale quello.
+      const userDateSet = !!(from || to);
+      const effFrom = userDateSet ? from : '2026-01-01';
+      const effTo   = to;
+      const productScopeClients = (dashData.clients || [])
         .filter(c =>
           (!country || c.country === country) &&
           (!region  || c.region  === region) &&
           (!clientId || c.id     === clientId))
-        .map(c => clientInRange(c, '2026-01-01', ''));
-      const products2026 = computeProducts(clients2026);
-      const groups2026   = computeGroups(clients2026);
+        .map(c => clientInRange(c, effFrom, effTo));
+      const products2026 = computeProducts(productScopeClients);
+      const groups2026   = computeGroups(productScopeClients);
       renderProductChart(products2026);
       renderGroupChart(groups2026);
+      updateProductChartTitles(userDateSet, effFrom, effTo);
     }
 
     function renderKpis(clients, d) {
@@ -698,6 +707,21 @@
         grp[g].total += it.total || 0;
       })));
       return Object.values(grp).sort((a,b) => b.total - a.total);
+    }
+
+    function updateProductChartTitles(userDateSet, effFrom, effTo) {
+      const tProd  = document.getElementById('productChartTitle');
+      const tGroup = document.getElementById('groupChartTitle');
+      if (!tProd || !tGroup) return;
+      if (userDateSet) {
+        const todayWord = LANG === 'en' ? 'today' : 'oggi';
+        const range = `(${effFrom || '…'} → ${effTo || todayWord})`;
+        tProd.textContent  = L.top4ProductsRange  + ' ' + range;
+        tGroup.textContent = L.revenueByGroupRange + ' ' + range;
+      } else {
+        tProd.textContent  = L.top4Products;
+        tGroup.textContent = L.revenueByGroup;
+      }
     }
 
     function renderGroupChart(groups) {
