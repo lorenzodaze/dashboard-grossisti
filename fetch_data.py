@@ -301,18 +301,22 @@ def main():
         }
 
     all_clients       = list(clients.values())
-    triveneto_clients = [c for c in all_clients if c.get('region') == 'Triveneto']
-    lazio_clients     = [c for c in all_clients if c.get('region') == 'Lazio']
+    triveneto_clients = [c for c in all_clients if c.get('region')  == 'Triveneto']
+    lazio_clients     = [c for c in all_clients if c.get('region')  == 'Lazio']
+    portugal_clients  = [c for c in all_clients if c.get('country') == 'Portugal']
 
-    full_output = build_output(all_clients)
-    triv_output = build_output(triveneto_clients)
-    lazio_output = build_output(lazio_clients)
+    full_output     = build_output(all_clients)
+    triv_output     = build_output(triveneto_clients)
+    lazio_output    = build_output(lazio_clients)
+    portugal_output = build_output(portugal_clients)
 
     pwd_a = os.environ.get('DASH_PASSWORD_A', '')
     pwd_b = os.environ.get('DASH_PASSWORD_B', '')
     pwd_c = os.environ.get('DASH_PASSWORD_C', '')
-    if not pwd_a or not pwd_b or not pwd_c:
-        raise SystemExit("ERRORE: imposta i secret DASH_PASSWORD_A, DASH_PASSWORD_B e DASH_PASSWORD_C.")
+    pwd_d = os.environ.get('DASH_PASSWORD_D', '')
+    if not pwd_a or not pwd_b or not pwd_c or not pwd_d:
+        raise SystemExit("ERRORE: imposta i secret DASH_PASSWORD_A, DASH_PASSWORD_B, "
+                         "DASH_PASSWORD_C e DASH_PASSWORD_D.")
 
     os.makedirs('data', exist_ok=True)
     with open('data/full.enc', 'w', encoding='utf-8') as f:
@@ -321,10 +325,13 @@ def main():
         json.dump(encrypt_json(triv_output, pwd_b), f)
     with open('data/lazio.enc', 'w', encoding='utf-8') as f:
         json.dump(encrypt_json(lazio_output, pwd_c), f)
+    with open('data/portugal.enc', 'w', encoding='utf-8') as f:
+        json.dump(encrypt_json(portugal_output, pwd_d), f)
 
     print(f"\nSaved data/full.enc ({len(all_clients)} clienti), "
-          f"data/triveneto.enc ({len(triveneto_clients)} clienti) e "
-          f"data/lazio.enc ({len(lazio_clients)} clienti)")
+          f"data/triveneto.enc ({len(triveneto_clients)} clienti), "
+          f"data/lazio.enc ({len(lazio_clients)} clienti) e "
+          f"data/portugal.enc ({len(portugal_clients)} clienti)")
 
 
 if __name__ == '__main__':
