@@ -140,7 +140,8 @@ def main():
         last_day = calendar.monthrange(y, m)[1]
         last     = min(date(y, m, last_day), today)
         chunk = search_records(token, 'Sales_Orders',
-            f'(Date:between:{first:%Y-%m-%d},{last:%Y-%m-%d})', order_fields)
+            f'((Date:between:{first:%Y-%m-%d},{last:%Y-%m-%d})and(Order_Type:equals:Sales))',
+            order_fields)
         all_orders.extend(chunk)
         if chunk:
             print(f"  {y}-{m:02d}: {len(chunk)} orders")
