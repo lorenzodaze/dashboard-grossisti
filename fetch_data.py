@@ -81,6 +81,32 @@ def get_order_items(token, order_id):
     return d['data'][0].get('Ordered_Items', [])
 
 
+def get_all_records(token, module, fields, per_page=200):
+    """Pagina su tutti i record del modulo via /module (non /search).
+    Supporta page_token, quindi nessun limite a 2000 record."""
+    results = []
+    page_token = None
+    while True:
+        params = {'fields': fields, 'per_page': per_page}
+        if page_token:
+            params['page_token'] = page_token
+        r = requests.get(f'{BASE_URL}/{module}', headers=auth(token), params=params)
+        if r.status_code == 204:
+            break
+        if not r.ok:
+            print(f"  get_all error {r.status_code} on {module}: {r.text[:200]}")
+            break
+        d = r.json()
+        if 'data' not in d:
+            break
+        results.extend(d['data'])
+        info = d.get('info', {}) or {}
+        page_token = info.get('next_page_token')
+        if not page_token or not info.get('more_records'):
+            break
+    return results
+
+
 def quarter_of(d):
     return (d.month - 1) // 3 + 1, d.year
 
@@ -125,6 +151,17 @@ def main():
     if not wholesaler_ids:
         print("No wholesaler accounts found.")
         return
+
+    # --- Catalogo prodotti: mappa codice -> categoria ---
+    print("Fetching product catalog...")
+    products_all = get_all_records(token, 'Products', 'id,Product_Code,Product_Category')
+    product_group = {}
+    for p in products_all:
+        code = (p.get('Product_Code') or '').strip()
+        cat  = (p.get('Product_Category') or 'Altri').strip() or 'Altri'
+        if code:
+            product_group[code] = cat
+    print(f"Products in catalog: {len(product_group)}")
 
     # --- Sales Orders: cerca MESE PER MESE (l'endpoint /search e' limitato a
     #     ~2000 record per query, quindi una singola ricerca su 2 anni taglierebbe
@@ -233,9 +270,11 @@ def main():
             item_unit  = float(it.get('Unitary_Price_1', 0) or 0)
             # Apply cash discount proportionally at item level
             disc_factor = 1 - checkout_pct / 100 if checkout_pct else 1
+            code = it.get('Product_Code', '') or ''
             items_out.append({
-                'code':  it.get('Product_Code', '') or '',
+                'code':  code,
                 'name':  pname,
+                'group': product_group.get(code, 'Altri'),
                 'qty':   float(it.get('Quantity', 0) or 0),
                 'unit':  round(item_unit * disc_factor, 4),
                 'total': round(item_net  * disc_factor, 2),

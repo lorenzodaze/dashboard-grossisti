@@ -103,9 +103,17 @@
       <!-- Top products chart -->
       <div class="bg-white rounded-xl border border-slate-200 p-6">
         <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
-          Top 4 prodotti per fatturato
+          Top 4 prodotti per fatturato (dal 2026)
         </h2>
         <canvas id="productChart" height="70"></canvas>
+      </div>
+
+      <!-- Revenue by product group -->
+      <div class="bg-white rounded-xl border border-slate-200 p-6">
+        <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4">
+          Fatturato per gruppo prodotto (dal 2026)
+        </h2>
+        <canvas id="groupChart" height="70"></canvas>
       </div>
 
       <!-- KPI Cards -->
@@ -190,6 +198,7 @@
     let dashData = null;
     let chartInstance = null;
     let productChartInstance = null;
+    let groupChartInstance   = null;
     let scopeProducts = [];
     let scopeClients  = [];
 
@@ -391,8 +400,19 @@
       renderMonthlyTable(clients, dashData);
       renderClients(clients, dashData);
       scopeProducts = computeProducts(clients);
-      renderProductChart(scopeProducts);
       applyProductSearch();
+
+      // Grafici prodotti/gruppi: sempre dal 2026 (ignorando il filtro data globale)
+      const clients2026 = (dashData.clients || [])
+        .filter(c =>
+          (!country || c.country === country) &&
+          (!region  || c.region  === region) &&
+          (!clientId || c.id     === clientId))
+        .map(c => clientInRange(c, '2026-01-01', ''));
+      const products2026 = computeProducts(clients2026);
+      const groups2026   = computeGroups(clients2026);
+      renderProductChart(products2026);
+      renderGroupChart(groups2026);
     }
 
     function renderKpis(clients, d) {
@@ -548,6 +568,58 @@
         prod[code].total += it.total;
       })));
       return Object.values(prod).sort((a,b) => b.total - a.total);
+    }
+
+    function computeGroups(clients) {
+      const grp = {};
+      clients.forEach(c => (c.orders || []).forEach(o => (o.items || []).forEach(it => {
+        const g = it.group || 'Altri';
+        if (!grp[g]) grp[g] = { group: g, qty: 0, total: 0 };
+        grp[g].qty   += it.qty   || 0;
+        grp[g].total += it.total || 0;
+      })));
+      return Object.values(grp).sort((a,b) => b.total - a.total);
+    }
+
+    function renderGroupChart(groups) {
+      const labels = groups.map(g => g.group);
+      const values = groups.map(g => round2(g.total));
+      if (groupChartInstance) groupChartInstance.destroy();
+      groupChartInstance = new Chart(document.getElementById('groupChart'), {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [{
+            data: values,
+            backgroundColor: 'rgba(37,99,235,0.7)',
+            borderRadius: 5,
+            borderSkipped: false,
+          }]
+        },
+        options: {
+          responsive: true,
+          layout: { padding: { top: 24 } },
+          plugins: {
+            legend: { display: false },
+            datalabels: {
+              display: true, anchor: 'end', align: 'end',
+              color: '#334155', font: { weight: '600', size: 11 },
+              formatter: v => fmt(v),
+            },
+            tooltip: { callbacks: {
+              label: ctx => ' Fatturato: ' + fmt(ctx.raw)
+            } }
+          },
+          scales: {
+            x: { grid: { display: false } },
+            y: {
+              beginAtZero: true,
+              ticks: { callback: v => '€' + fmtAxisNum(v) },
+              grid: { color: 'rgba(0,0,0,.04)' }
+            }
+          }
+        }
+      });
     }
 
     function applyProductSearch() {
