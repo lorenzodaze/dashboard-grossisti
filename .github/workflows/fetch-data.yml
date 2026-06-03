@@ -32,7 +32,7 @@ jobs:
           DASH_PASSWORD_A:    ${{ secrets.DASH_PASSWORD_A }}
           DASH_PASSWORD_B:    ${{ secrets.DASH_PASSWORD_B }}
           DASH_PASSWORD_C:    ${{ secrets.DASH_PASSWORD_C }}
-          DASH_PASSWORD_D:    ${{ secrets.DASH_PASSWORD_D }}
+          DASH_PASSWORD_D:    ${{ secrets.Portugal }}
         run: python fetch_data.py
 
       - name: Commit e push dati
