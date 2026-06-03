@@ -453,12 +453,33 @@
       document.getElementById('productSearch').addEventListener('input', applyProductSearch);
       document.getElementById('chartMode').addEventListener('change', () =>
         renderChart(scopeClients, dashData));
-      document.getElementById('chartGroup').addEventListener('change', () =>
-        renderChart(scopeClients, dashData));
+      document.getElementById('chartGroup').addEventListener('change', applyFilters);
 
       applyFilters();
       document.getElementById('loading').classList.add('hidden');
       document.getElementById('content').classList.remove('hidden');
+    }
+
+    // Vista del cliente con solo gli articoli del gruppo prodotto scelto;
+    // ricalcola order.total, monthly e quarterly su quel sottoinsieme.
+    function clientByGroup(c, group) {
+      if (!group) return c;
+      const monthly = {}, quarterly = {};
+      const orders = (c.orders || []).map(o => {
+        const items = (o.items || []).filter(it => it.group === group);
+        const total = round2(items.reduce((s, it) => s + (it.total || 0), 0));
+        return { ...o, items, total };
+      }).filter(o => o.items.length > 0);
+      orders.forEach(o => {
+        const d = o.ship || o.date;
+        if (!d) return;
+        const ym = d.substring(0, 7);
+        const [y, m] = d.split('-').map(Number);
+        const ql = `Q${Math.floor((m - 1) / 3) + 1} ${y}`;
+        monthly[ym]   = (monthly[ym]   || 0) + o.total;
+        quarterly[ql] = (quarterly[ql] || 0) + o.total;
+      });
+      return { ...c, orders, monthly, quarterly };
     }
 
     // Costruisce una "vista" del cliente limitata agli ordini nel range di date,
@@ -490,13 +511,16 @@
       const client  = document.getElementById('filterClient').value;
       const from    = document.getElementById('filterFrom').value;
       const to      = document.getElementById('filterTo').value;
+      const group   = document.getElementById('chartGroup').value;
+      const anyScope = !!(from || to || group);
       return (dashData.clients || [])
         .filter(c =>
           (!country || c.country === country) &&
           (!region  || c.region  === region) &&
           (!client  || c.id      === client))
         .map(c => clientInRange(c, from, to))
-        .filter(c => !(from || to) || (c.orders && c.orders.length > 0));
+        .map(c => clientByGroup(c, group))
+        .filter(c => !anyScope || (c.orders && c.orders.length > 0));
     }
 
     function applyFilters() {
@@ -510,7 +534,8 @@
       const to   = document.getElementById('filterTo').value;
       const todayWord = LANG === 'en' ? 'today' : 'oggi';
       const dateLbl = (from || to) ? `${from || '…'} → ${to || todayWord}` : '';
-      const scope   = [country, region, clientName, dateLbl].filter(Boolean).join(' · ');
+      const groupLbl = document.getElementById('chartGroup').value || '';
+      const scope   = [country, region, clientName, dateLbl, groupLbl].filter(Boolean).join(' · ');
       document.getElementById('filterScope').textContent =
         scope ? `${L.scope}: ${scope}` : `${L.scope}: ${L.allClientsLc}`;
 
@@ -524,19 +549,22 @@
 
       // Grafici prodotti/gruppi: default dal 2026; se l'utente imposta un range
       // di date, prevale quello.
+      const group = document.getElementById('chartGroup').value || '';
       const userDateSet = !!(from || to);
       const effFrom = userDateSet ? from : '2026-01-01';
       const effTo   = to;
-      const productScopeClients = (dashData.clients || [])
+      // Scope senza filtro gruppo (per il grafico "Fatturato per gruppo prodotto",
+      // così mostra tutte le categorie e l'utente vede sempre la ripartizione).
+      const productScopeAll = (dashData.clients || [])
         .filter(c =>
           (!country || c.country === country) &&
           (!region  || c.region  === region) &&
           (!clientId || c.id     === clientId))
         .map(c => clientInRange(c, effFrom, effTo));
-      const products2026 = computeProducts(productScopeClients);
-      const groups2026   = computeGroups(productScopeClients);
-      renderProductChart(products2026);
-      renderGroupChart(groups2026);
+      // Scope con filtro gruppo (per il Top 4 prodotti)
+      const productScopeFiltered = productScopeAll.map(c => clientByGroup(c, group));
+      renderProductChart(computeProducts(productScopeFiltered));
+      renderGroupChart(computeGroups(productScopeAll));
       updateProductChartTitles(userDateSet, effFrom, effTo);
     }
 
@@ -572,9 +600,8 @@
 
     function renderChart(clients, d) {
       const mode  = document.getElementById('chartMode').value || 'A';
-      const group = document.getElementById('chartGroup').value || '';
-      const sMon  = (cs, ym) => sumMonthGroup(cs, ym, group);
-      const sQrt  = (cs, ql) => sumQuarterGroup(cs, ql, group);
+      const sMon  = sumMonth;
+      const sQrt  = sumQuarter;
       const years = [...new Set(monthsFrom2025(d.current_month).map(x => x.y))];
       let labels, datasets, grouped = false;
 
