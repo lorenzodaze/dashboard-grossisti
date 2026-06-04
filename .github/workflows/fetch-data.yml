@@ -33,13 +33,14 @@ jobs:
           DASH_PASSWORD_B:    ${{ secrets.DASH_PASSWORD_B }}
           DASH_PASSWORD_C:    ${{ secrets.DASH_PASSWORD_C }}
           DASH_PASSWORD_D:    ${{ secrets.Portugal }}
+          DASH_PASSWORD_E:    ${{ secrets.Puglia }}
         run: python fetch_data.py
 
       - name: Commit e push dati
         run: |
           git config --local user.email "github-actions[bot]@users.noreply.github.com"
           git config --local user.name  "github-actions[bot]"
-          git add data/full.enc data/triveneto.enc data/lazio.enc data/portugal.enc
+          git add data/full.enc data/triveneto.enc data/lazio.enc data/portugal.enc data/puglia.enc
           git diff --staged --quiet || git commit -m "Update dashboard data - $(date -u '+%Y-%m-%d %H:%M UTC')"
           git pull --rebase
           git push

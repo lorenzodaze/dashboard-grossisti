@@ -167,9 +167,10 @@ def main():
     print(f"Wholesaler accounts: {len(accounts)}")
     wholesaler_ids = {a['id'] for a in accounts}
     acct_info      = {a['id']: {
-        'name':    a.get('Account_Name', '') or '',
-        'country': a.get('Country', '') or '',
-        'region':  remap_region(a.get('Region', ''), a.get('State_Province', '')),
+        'name':     a.get('Account_Name', '') or '',
+        'country':  a.get('Country', '') or '',
+        'region':   remap_region(a.get('Region', ''), a.get('State_Province', '')),
+        'province': (a.get('State_Province', '') or '').strip(),
     } for a in accounts}
 
     if not wholesaler_ids:
@@ -217,10 +218,11 @@ def main():
         acct = o.get('Account_Name', {})
         if isinstance(acct, dict) and acct.get('id') in wholesaler_ids:
             info = acct_info.get(acct.get('id', ''), {})
-            o['_account_id']      = acct.get('id', '')
-            o['_account_name']    = info.get('name') or acct.get('name', '')
-            o['_account_country'] = info.get('country', '')
-            o['_account_region']  = info.get('region', '')
+            o['_account_id']       = acct.get('id', '')
+            o['_account_name']     = info.get('name') or acct.get('name', '')
+            o['_account_country']  = info.get('country', '')
+            o['_account_region']   = info.get('region', '')
+            o['_account_province'] = info.get('province', '')
             orders_raw.append(o)
     print(f"Wholesaler orders: {len(orders_raw)}")
 
@@ -277,9 +279,10 @@ def main():
             clients[aid] = {
                 'id':      aid,
                 'name':    aname,
-                'country': order.get('_account_country', ''),
-                'region':  order.get('_account_region', ''),
-                'groups':  groups_for(aname),
+                'country':  order.get('_account_country', ''),
+                'region':   order.get('_account_region', ''),
+                'province': order.get('_account_province', ''),
+                'groups':   groups_for(aname),
                 'quarterly': {}, 'monthly': {}, 'orders': []
             }
 
@@ -329,19 +332,24 @@ def main():
     triveneto_clients = [c for c in all_clients if c.get('region')  == 'Triveneto']
     lazio_clients     = [c for c in all_clients if c.get('region')  == 'Lazio']
     portugal_clients  = [c for c in all_clients if c.get('country') == 'Portugal']
+    # Puglia + provincia di Matera (che e' in Basilicata)
+    puglia_clients    = [c for c in all_clients
+                         if c.get('region') == 'Puglia' or c.get('province') == 'Matera']
 
     full_output     = build_output(all_clients)
     triv_output     = build_output(triveneto_clients)
     lazio_output    = build_output(lazio_clients)
     portugal_output = build_output(portugal_clients)
+    puglia_output   = build_output(puglia_clients)
 
     pwd_a = os.environ.get('DASH_PASSWORD_A', '')
     pwd_b = os.environ.get('DASH_PASSWORD_B', '')
     pwd_c = os.environ.get('DASH_PASSWORD_C', '')
     pwd_d = os.environ.get('DASH_PASSWORD_D', '')
-    if not pwd_a or not pwd_b or not pwd_c or not pwd_d:
+    pwd_e = os.environ.get('DASH_PASSWORD_E', '')
+    if not pwd_a or not pwd_b or not pwd_c or not pwd_d or not pwd_e:
         raise SystemExit("ERRORE: imposta i secret DASH_PASSWORD_A, DASH_PASSWORD_B, "
-                         "DASH_PASSWORD_C e DASH_PASSWORD_D.")
+                         "DASH_PASSWORD_C, DASH_PASSWORD_D e DASH_PASSWORD_E.")
 
     os.makedirs('data', exist_ok=True)
     with open('data/full.enc', 'w', encoding='utf-8') as f:
@@ -352,11 +360,14 @@ def main():
         json.dump(encrypt_json(lazio_output, pwd_c), f)
     with open('data/portugal.enc', 'w', encoding='utf-8') as f:
         json.dump(encrypt_json(portugal_output, pwd_d), f)
+    with open('data/puglia.enc', 'w', encoding='utf-8') as f:
+        json.dump(encrypt_json(puglia_output, pwd_e), f)
 
     print(f"\nSaved data/full.enc ({len(all_clients)} clienti), "
           f"data/triveneto.enc ({len(triveneto_clients)} clienti), "
-          f"data/lazio.enc ({len(lazio_clients)} clienti) e "
-          f"data/portugal.enc ({len(portugal_clients)} clienti)")
+          f"data/lazio.enc ({len(lazio_clients)} clienti), "
+          f"data/portugal.enc ({len(portugal_clients)} clienti) e "
+          f"data/puglia.enc ({len(puglia_clients)} clienti)")
 
 
 if __name__ == '__main__':
