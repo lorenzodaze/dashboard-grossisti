@@ -66,6 +66,11 @@
                    focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="" data-i18n="allClients">Tutti i clienti</option>
           </select>
+          <select id="filterGroup"
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="" data-i18n="allClientGroups">Tutti i gruppi</option>
+          </select>
           <span class="text-xs text-slate-400 ml-1" data-i18n="from">Da</span>
           <input type="date" id="filterFrom"
             class="border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white
@@ -179,7 +184,7 @@
         loading: 'Caricamento dati...', errLoad: 'Errore nel caricamento dei dati. Riprova tra qualche minuto.',
         logout: 'Esci', filters: 'Filtri',
         allCountries: 'Tutte le nazioni', allRegions: 'Tutte le regioni', allClients: 'Tutti i clienti',
-        allGroups: 'Tutti i gruppi',
+        allGroups: 'Tutti i gruppi', allClientGroups: 'Tutti i gruppi',
         from: 'Da', to: 'A', reset: 'Azzera',
         title: 'Dashboard Grossisti',
         revenueChart: 'Fatturato – da gennaio 2025',
@@ -211,7 +216,7 @@
         loading: 'Loading data...', errLoad: 'Failed to load data. Please try again in a few minutes.',
         logout: 'Log out', filters: 'Filters',
         allCountries: 'All countries', allRegions: 'All regions', allClients: 'All clients',
-        allGroups: 'All groups',
+        allGroups: 'All groups', allClientGroups: 'All groups',
         from: 'From', to: 'To', reset: 'Reset',
         title: 'Wholesalers Dashboard',
         revenueChart: 'Revenue – from January 2025',
@@ -424,6 +429,14 @@
         document.getElementById('filterRegion').classList.add('hidden');
       }
 
+      // Il filtro "Gruppi" (gruppi d'acquisto) compare solo nella vista completa
+      if (DASH_RESTRICTED) {
+        document.getElementById('filterGroup').classList.add('hidden');
+      } else {
+        populateClientGroupFilter(clients);
+        document.getElementById('filterGroup').addEventListener('change', applyFilters);
+      }
+
       populateCountryFilter(clients);
       populateClientFilter(clients);
       populateGroupFilter(clients);
@@ -445,6 +458,7 @@
         document.getElementById('filterRegion').value = '';
         populateClientFilter(clients);
         document.getElementById('filterClient').value = '';
+        document.getElementById('filterGroup').value = '';
         document.getElementById('filterFrom').value = '';
         document.getElementById('filterTo').value = '';
         document.getElementById('chartGroup').value = '';
@@ -512,12 +526,14 @@
       const from    = document.getElementById('filterFrom').value;
       const to      = document.getElementById('filterTo').value;
       const group   = document.getElementById('chartGroup').value;
+      const cgroup  = document.getElementById('filterGroup').value;
       const anyScope = !!(from || to || group);
       return (dashData.clients || [])
         .filter(c =>
           (!country || c.country === country) &&
           (!region  || c.region  === region) &&
-          (!client  || c.id      === client))
+          (!client  || c.id      === client) &&
+          (!cgroup  || (c.groups || []).includes(cgroup)))
         .map(c => clientInRange(c, from, to))
         .map(c => clientByGroup(c, group))
         .filter(c => !anyScope || (c.orders && c.orders.length > 0));
@@ -534,8 +550,9 @@
       const to   = document.getElementById('filterTo').value;
       const todayWord = LANG === 'en' ? 'today' : 'oggi';
       const dateLbl = (from || to) ? `${from || '…'} → ${to || todayWord}` : '';
-      const groupLbl = document.getElementById('chartGroup').value || '';
-      const scope   = [country, region, clientName, dateLbl, groupLbl].filter(Boolean).join(' · ');
+      const groupLbl  = document.getElementById('chartGroup').value || '';
+      const cgroupLbl = document.getElementById('filterGroup').value || '';
+      const scope   = [country, region, cgroupLbl, clientName, dateLbl, groupLbl].filter(Boolean).join(' · ');
       document.getElementById('filterScope').textContent =
         scope ? `${L.scope}: ${scope}` : `${L.scope}: ${L.allClientsLc}`;
 
@@ -817,6 +834,18 @@
       sel.innerHTML = `<option value="">${L.allRegions}</option>` +
         regions.map(r => `<option value="${r}">${r}</option>`).join('');
       sel.value = regions.includes(cur) ? cur : '';
+    }
+
+    function populateClientGroupFilter(clients) {
+      const sel = document.getElementById('filterGroup');
+      if (!sel) return;
+      const cur = sel.value;
+      const set = new Set();
+      clients.forEach(c => (c.groups || []).forEach(g => set.add(g)));
+      const list = [...set].sort();
+      sel.innerHTML = `<option value="">${L.allClientGroups}</option>` +
+        list.map(g => `<option value="${g}">${g}</option>`).join('');
+      sel.value = list.includes(cur) ? cur : '';
     }
 
     function populateGroupFilter(clients) {

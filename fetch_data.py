@@ -131,6 +131,30 @@ def remap_region(region, province):
     return region
 
 
+# Gruppi d'acquisto: i membri sono identificati per sottostringa del nome (lowercase),
+# cosi' vengono incluse automaticamente anche tutte le filiali della stessa insegna.
+GROUP_DEFS = {
+    'Megawatt': [
+        'elettrocampania', 'electra', 'elettrolazio', 'acmei', 'medel',
+        'alfieri', 'cet s.p', 'edif', 'barcella', 'megawatt',
+        'cameg', 'verrocchio', 'energia italia', 'asso sicurezza',
+    ],
+}
+# Nomi che NON appartengono al gruppo pur contenendo un pattern (falsi positivi noti)
+GROUP_EXCLUDE = {
+    'Megawatt': ['megawatt s.r.l.', 'martelli'],
+}
+
+
+def groups_for(name):
+    n = (name or '').lower()
+    out = []
+    for grp, pats in GROUP_DEFS.items():
+        if any(p in n for p in pats) and not any(x in n for x in GROUP_EXCLUDE.get(grp, [])):
+            out.append(grp)
+    return out
+
+
 def main():
     today = date.today()
     token = get_token()
@@ -255,6 +279,7 @@ def main():
                 'name':    aname,
                 'country': order.get('_account_country', ''),
                 'region':  order.get('_account_region', ''),
+                'groups':  groups_for(aname),
                 'quarterly': {}, 'monthly': {}, 'orders': []
             }
 
