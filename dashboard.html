@@ -154,9 +154,17 @@
       <div class="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div class="px-6 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="productsOrdered">Prodotti Ordinati</h2>
-          <input type="text" id="productSearch" placeholder="Cerca codice o nome..." data-i18n-ph="searchProduct"
-            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full sm:w-56
-                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+          <div class="flex flex-wrap items-center gap-2 w-full sm:w-auto">
+            <select id="productSort"
+              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                     focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="total" data-i18n="sortByRevenue">Per fatturato</option>
+              <option value="qty" data-i18n="sortByQty">Per quantità</option>
+            </select>
+            <input type="text" id="productSearch" placeholder="Cerca codice o nome..." data-i18n-ph="searchProduct"
+              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full sm:w-56
+                     focus:outline-none focus:ring-2 focus:ring-blue-500">
+          </div>
         </div>
         <div id="productsTable"></div>
       </div>
@@ -198,6 +206,7 @@
         monthlyComparison: 'Confronto mensile',
         ordersByClient: 'Ordini per Cliente', productsOrdered: 'Prodotti Ordinati',
         searchProduct: 'Cerca codice o nome...',
+        sortByRevenue: 'Per fatturato', sortByQty: 'Per quantità',
         updated: 'Aggiornato', view: 'Vista', scope: 'Ambito', allClientsLc: 'tutti i clienti',
         currentMonth: 'Mese Corrente', currentQuarter: 'Trimestre Corrente',
         previousQuarter: 'Trimestre Precedente', twoQuartersAgo: 'Due Trimestri Fa',
@@ -230,6 +239,7 @@
         monthlyComparison: 'Monthly comparison',
         ordersByClient: 'Orders by Client', productsOrdered: 'Products ordered',
         searchProduct: 'Search by code or name...',
+        sortByRevenue: 'By revenue', sortByQty: 'By quantity',
         updated: 'Updated', view: 'View', scope: 'Scope', allClientsLc: 'all clients',
         currentMonth: 'Current Month', currentQuarter: 'Current Quarter',
         previousQuarter: 'Previous Quarter', twoQuartersAgo: 'Two Quarters Ago',
@@ -466,6 +476,7 @@
         applyFilters();
       });
       document.getElementById('productSearch').addEventListener('input', applyProductSearch);
+      document.getElementById('productSort').addEventListener('change', applyProductSearch);
       document.getElementById('chartMode').addEventListener('change', () =>
         renderChart(scopeClients, dashData));
       document.getElementById('chartGroup').addEventListener('change', applyFilters);
@@ -811,9 +822,13 @@
     }
 
     function applyProductSearch() {
-      const q = (document.getElementById('productSearch').value || '').toLowerCase();
-      renderProducts(scopeProducts.filter(p =>
-        (p.code || '').toLowerCase().includes(q) || (p.name || '').toLowerCase().includes(q)));
+      const q    = (document.getElementById('productSearch').value || '').toLowerCase();
+      const sort = document.getElementById('productSort').value || 'total';
+      const list = scopeProducts
+        .filter(p => (p.code || '').toLowerCase().includes(q) || (p.name || '').toLowerCase().includes(q))
+        .slice()
+        .sort((a, b) => (b[sort] || 0) - (a[sort] || 0));
+      renderProducts(list);
     }
 
     function populateCountryFilter(clients) {
