@@ -71,6 +71,11 @@
                    focus:outline-none focus:ring-2 focus:ring-blue-500">
             <option value="" data-i18n="allClientGroups">Tutti i gruppi</option>
           </select>
+          <select id="chartGroup"
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="" data-i18n="allProductGroups">Tutti i gruppi prodotto</option>
+          </select>
           <span class="text-xs text-slate-400 ml-1" data-i18n="from">Da</span>
           <input type="date" id="filterFrom"
             class="border border-slate-200 rounded-lg px-2 py-1.5 text-sm bg-white
@@ -93,21 +98,14 @@
           <h2 class="text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="revenueChart">
             Fatturato – da gennaio 2025
           </h2>
-          <div class="flex gap-2 flex-wrap">
-            <select id="chartGroup"
-              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
-                     focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="" data-i18n="allGroups">Tutti i gruppi</option>
-            </select>
-            <select id="chartMode"
-              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
-                     focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="A" data-i18n="monthly">Mensile</option>
-              <option value="B" data-i18n="monthlyYoY">Mensile – confronto anni</option>
-              <option value="C" data-i18n="quarterly">Trimestrale</option>
-              <option value="D" data-i18n="quarterlyYoY">Trimestrale – confronto anni</option>
-            </select>
-          </div>
+          <select id="chartMode"
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="A" data-i18n="monthly">Mensile</option>
+            <option value="B" data-i18n="monthlyYoY">Mensile – confronto anni</option>
+            <option value="C" data-i18n="quarterly">Trimestrale</option>
+            <option value="D" data-i18n="quarterlyYoY">Trimestrale – confronto anni</option>
+          </select>
         </div>
         <canvas id="monthlyChart" height="70"></canvas>
       </div>
@@ -118,20 +116,13 @@
           <h2 id="productChartTitle" class="text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="top4Products">
             Top 4 prodotti per fatturato (dal 2026)
           </h2>
-          <div class="flex gap-2 flex-wrap">
-            <select id="productGroupFilter"
-              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
-                     focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="" data-i18n="allGroups">Tutti i gruppi</option>
-            </select>
-            <select id="productChartMode"
-              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
-                     focus:outline-none focus:ring-2 focus:ring-blue-500">
-              <option value="tot" data-i18n="chartTotal">Totale</option>
-              <option value="month" data-i18n="monthly">Mensile</option>
-              <option value="quarter" data-i18n="quarterly">Trimestrale</option>
-            </select>
-          </div>
+          <select id="productChartMode"
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="tot" data-i18n="chartTotal">Totale</option>
+            <option value="month" data-i18n="monthly">Mensile</option>
+            <option value="quarter" data-i18n="quarterly">Trimestrale</option>
+          </select>
         </div>
         <canvas id="productChart" height="70"></canvas>
       </div>
@@ -226,6 +217,7 @@
         logout: 'Esci', filters: 'Filtri',
         allCountries: 'Tutte le nazioni', allRegions: 'Tutte le regioni', allClients: 'Tutti i clienti',
         allGroups: 'Tutti i gruppi', allClientGroups: 'Tutti i gruppi',
+        allProductGroups: 'Tutti i gruppi prodotto',
         from: 'Da', to: 'A', reset: 'Azzera',
         title: 'Dashboard Grossisti',
         revenueChart: 'Fatturato – da gennaio 2025',
@@ -260,6 +252,7 @@
         logout: 'Log out', filters: 'Filters',
         allCountries: 'All countries', allRegions: 'All regions', allClients: 'All clients',
         allGroups: 'All groups', allClientGroups: 'All groups',
+        allProductGroups: 'All product groups',
         from: 'From', to: 'To', reset: 'Reset',
         title: 'Wholesalers Dashboard',
         revenueChart: 'Revenue – from January 2025',
@@ -514,7 +507,6 @@
         document.getElementById('filterFrom').value = '';
         document.getElementById('filterTo').value = '';
         document.getElementById('chartGroup').value = '';
-        document.getElementById('productGroupFilter').value = '';
         document.getElementById('groupChartFilter').value = '';
         applyFilters();
       });
@@ -525,7 +517,6 @@
       document.getElementById('chartGroup').addEventListener('change', applyFilters);
       document.getElementById('productChartMode').addEventListener('change', renderProductChart);
       document.getElementById('groupChartMode').addEventListener('change', renderGroupChart);
-      document.getElementById('productGroupFilter').addEventListener('change', renderProductChart);
       document.getElementById('groupChartFilter').addEventListener('change', renderGroupChart);
 
       applyFilters();
@@ -992,19 +983,18 @@
         if (it.group) groups.add(it.group);
       })));
       const list = [...groups].sort();
-      sel.innerHTML = `<option value="">${L.allGroups}</option>` +
+      sel.innerHTML = `<option value="">${L.allProductGroups}</option>` +
         list.map(g => `<option value="${g}">${g}</option>`).join('');
       sel.value = list.includes(cur) ? cur : '';
 
-      // stessa lista per i filtri locali dei grafici prodotti/gruppo
-      [document.getElementById('productGroupFilter'),
-       document.getElementById('groupChartFilter')].forEach(s => {
-        if (!s) return;
-        const cv = s.value;
-        s.innerHTML = `<option value="">${L.allGroups}</option>` +
+      // stessa lista per il filtro locale del grafico gruppo
+      const gSel = document.getElementById('groupChartFilter');
+      if (gSel) {
+        const cv = gSel.value;
+        gSel.innerHTML = `<option value="">${L.allGroups}</option>` +
           list.map(g => `<option value="${g}">${g}</option>`).join('');
-        s.value = list.includes(cv) ? cv : '';
-      });
+        gSel.value = list.includes(cv) ? cv : '';
+      }
     }
 
     function populateClientFilter(clients) {
@@ -1022,13 +1012,11 @@
 
     function renderProductChart() {
       const mode     = document.getElementById('productChartMode').value || 'tot';
-      const pgroup   = document.getElementById('productGroupFilter').value || '';
-      const clients  = pgroup ? gProdClients.map(c => clientByGroup(c, pgroup)) : gProdClients;
-      const products = computeProducts(clients);
+      const products = computeProducts(gProdClients);
       const top      = products.slice(0, 4);
       if (productChartInstance) productChartInstance.destroy();
       if (mode !== 'tot') {
-        productChartInstance = renderStackedChart('productChart', clients,
+        productChartInstance = renderStackedChart('productChart', gProdClients,
           it => it.code || 'N/D', mode, top.map(p => p.code || 'N/D'));
         return;
       }
