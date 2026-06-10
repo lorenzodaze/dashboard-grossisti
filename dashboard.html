@@ -118,13 +118,20 @@
           <h2 id="productChartTitle" class="text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="top4Products">
             Top 4 prodotti per fatturato (dal 2026)
           </h2>
-          <select id="productChartMode"
-            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
-                   focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="tot" data-i18n="chartTotal">Totale</option>
-            <option value="month" data-i18n="monthly">Mensile</option>
-            <option value="quarter" data-i18n="quarterly">Trimestrale</option>
-          </select>
+          <div class="flex gap-2 flex-wrap">
+            <select id="productGroupFilter"
+              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                     focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="" data-i18n="allGroups">Tutti i gruppi</option>
+            </select>
+            <select id="productChartMode"
+              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                     focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="tot" data-i18n="chartTotal">Totale</option>
+              <option value="month" data-i18n="monthly">Mensile</option>
+              <option value="quarter" data-i18n="quarterly">Trimestrale</option>
+            </select>
+          </div>
         </div>
         <canvas id="productChart" height="70"></canvas>
       </div>
@@ -500,6 +507,7 @@
         document.getElementById('filterFrom').value = '';
         document.getElementById('filterTo').value = '';
         document.getElementById('chartGroup').value = '';
+        document.getElementById('productGroupFilter').value = '';
         applyFilters();
       });
       document.getElementById('productSearch').addEventListener('input', applyProductSearch);
@@ -509,6 +517,7 @@
       document.getElementById('chartGroup').addEventListener('change', applyFilters);
       document.getElementById('productChartMode').addEventListener('change', renderProductChart);
       document.getElementById('groupChartMode').addEventListener('change', renderGroupChart);
+      document.getElementById('productGroupFilter').addEventListener('change', renderProductChart);
 
       applyFilters();
       document.getElementById('loading').classList.add('hidden');
@@ -974,6 +983,15 @@
       sel.innerHTML = `<option value="">${L.allGroups}</option>` +
         list.map(g => `<option value="${g}">${g}</option>`).join('');
       sel.value = list.includes(cur) ? cur : '';
+
+      // stessa lista per il filtro locale del grafico Top prodotti
+      const pSel = document.getElementById('productGroupFilter');
+      if (pSel) {
+        const pCur = pSel.value;
+        pSel.innerHTML = `<option value="">${L.allGroups}</option>` +
+          list.map(g => `<option value="${g}">${g}</option>`).join('');
+        pSel.value = list.includes(pCur) ? pCur : '';
+      }
     }
 
     function populateClientFilter(clients) {
@@ -991,11 +1009,13 @@
 
     function renderProductChart() {
       const mode     = document.getElementById('productChartMode').value || 'tot';
-      const products = computeProducts(gProdClients);
+      const pgroup   = document.getElementById('productGroupFilter').value || '';
+      const clients  = pgroup ? gProdClients.map(c => clientByGroup(c, pgroup)) : gProdClients;
+      const products = computeProducts(clients);
       const top      = products.slice(0, 4);
       if (productChartInstance) productChartInstance.destroy();
       if (mode !== 'tot') {
-        productChartInstance = renderStackedChart('productChart', gProdClients,
+        productChartInstance = renderStackedChart('productChart', clients,
           it => it.code || 'N/D', mode, top.map(p => p.code || 'N/D'));
         return;
       }
