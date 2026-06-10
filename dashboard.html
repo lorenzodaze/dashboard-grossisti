@@ -114,17 +114,35 @@
 
       <!-- Top products chart -->
       <div class="bg-white rounded-xl border border-slate-200 p-6">
-        <h2 id="productChartTitle" class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4" data-i18n="top4Products">
-          Top 4 prodotti per fatturato (dal 2026)
-        </h2>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h2 id="productChartTitle" class="text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="top4Products">
+            Top 4 prodotti per fatturato (dal 2026)
+          </h2>
+          <select id="productChartMode"
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="tot" data-i18n="chartTotal">Totale</option>
+            <option value="month" data-i18n="monthly">Mensile</option>
+            <option value="quarter" data-i18n="quarterly">Trimestrale</option>
+          </select>
+        </div>
         <canvas id="productChart" height="70"></canvas>
       </div>
 
       <!-- Revenue by product group -->
       <div class="bg-white rounded-xl border border-slate-200 p-6">
-        <h2 id="groupChartTitle" class="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-4" data-i18n="revenueByGroup">
-          Fatturato per gruppo prodotto (dal 2026)
-        </h2>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-4">
+          <h2 id="groupChartTitle" class="text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="revenueByGroup">
+            Fatturato per gruppo prodotto (dal 2026)
+          </h2>
+          <select id="groupChartMode"
+            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                   focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="tot" data-i18n="chartTotal">Totale</option>
+            <option value="month" data-i18n="monthly">Mensile</option>
+            <option value="quarter" data-i18n="quarterly">Trimestrale</option>
+          </select>
+        </div>
         <canvas id="groupChart" height="70"></canvas>
       </div>
 
@@ -199,6 +217,7 @@
         revenueChart: 'Fatturato – da gennaio 2025',
         monthly: 'Mensile', monthlyYoY: 'Mensile – confronto anni',
         quarterly: 'Trimestrale', quarterlyYoY: 'Trimestrale – confronto anni',
+        chartTotal: 'Totale',
         top4Products: 'Top 4 prodotti per fatturato (dal 2026)',
         top4ProductsRange: 'Top 4 prodotti per fatturato',
         revenueByGroup: 'Fatturato per gruppo prodotto (dal 2026)',
@@ -232,6 +251,7 @@
         revenueChart: 'Revenue – from January 2025',
         monthly: 'Monthly', monthlyYoY: 'Monthly – year comparison',
         quarterly: 'Quarterly', quarterlyYoY: 'Quarterly – year comparison',
+        chartTotal: 'Total',
         top4Products: 'Top 4 products by revenue (from 2026)',
         top4ProductsRange: 'Top 4 products by revenue',
         revenueByGroup: 'Revenue by product group (from 2026)',
@@ -307,6 +327,13 @@
     let groupChartInstance   = null;
     let scopeProducts = [];
     let scopeClients  = [];
+    let gProdClients  = [];
+    let gGrpClients   = [];
+
+    // Palette per i grafici impilati (mese/trimestre a confronto)
+    const STACK_PALETTE = ['#34d399','#60a5fa','#f59e0b','#a78bfa','#f87171',
+                           '#10b981','#3b82f6','#fbbf24','#ec4899','#14b8a6',
+                           '#8b5cf6','#fb923c'];
 
     if (window.ChartDataLabels) Chart.register(ChartDataLabels);
 
@@ -480,6 +507,8 @@
       document.getElementById('chartMode').addEventListener('change', () =>
         renderChart(scopeClients, dashData));
       document.getElementById('chartGroup').addEventListener('change', applyFilters);
+      document.getElementById('productChartMode').addEventListener('change', renderProductChart);
+      document.getElementById('groupChartMode').addEventListener('change', renderGroupChart);
 
       applyFilters();
       document.getElementById('loading').classList.add('hidden');
@@ -592,8 +621,11 @@
         .map(c => clientInRange(c, effFrom, effTo));
       // Scope con filtro gruppo (per il Top 4 prodotti)
       const productScopeFiltered = productScopeAll.map(c => clientByGroup(c, group));
-      renderProductChart(computeProducts(productScopeFiltered));
-      renderGroupChart(computeGroups(productScopeAll));
+      // Salvo gli scope per poter ridisegnare i grafici al cambio di modalità
+      gProdClients = productScopeFiltered;
+      gGrpClients  = productScopeAll;
+      renderProductChart();
+      renderGroupChart();
       updateProductChartTitles(userDateSet, effFrom, effTo);
     }
 
@@ -780,10 +812,77 @@
       }
     }
 
-    function renderGroupChart(groups) {
+    // --- ripartizione temporale (mese/trimestre) per i grafici prodotti/gruppi ---
+    function timeBreakdown(clients, dimOf, gran, allowed) {
+      const buckets = new Set(), series = {};
+      clients.forEach(c => (c.orders || []).forEach(o => {
+        const d = o.ship || o.date;
+        if (!d) return;
+        const [y, mo] = d.split('-').map(Number);
+        const key = gran === 'quarter'
+          ? `${y}-Q${Math.floor((mo - 1) / 3) + 1}`
+          : d.substring(0, 7);
+        buckets.add(key);
+        (o.items || []).forEach(it => {
+          const dim = dimOf(it);
+          if (!dim || (allowed && !allowed.has(dim))) return;
+          (series[dim] = series[dim] || {})[key] =
+            (series[dim][key] || 0) + (it.total || 0);
+        });
+      }));
+      return { buckets: [...buckets].sort(), series };
+    }
+
+    function bucketLabel(key, gran) {
+      if (gran === 'quarter') {
+        const [y, q] = key.split('-Q');
+        return `Q${q} ${String(y).slice(2)}`;
+      }
+      const [y, m] = key.split('-').map(Number);
+      return `${MONTHS_SHORT[m - 1]} ${String(y).slice(2)}`;
+    }
+
+    function renderStackedChart(canvasId, clients, dimOf, gran, names) {
+      const allowed = new Set(names);
+      const { buckets, series } = timeBreakdown(clients, dimOf, gran, allowed);
+      const labels = buckets.map(b => bucketLabel(b, gran));
+      const datasets = names.map((nm, i) => ({
+        label: nm,
+        data: buckets.map(b => round2((series[nm] && series[nm][b]) || 0)),
+        backgroundColor: STACK_PALETTE[i % STACK_PALETTE.length],
+        borderRadius: 4, borderSkipped: false,
+      }));
+      return new Chart(document.getElementById(canvasId), {
+        type: 'bar',
+        data: { labels, datasets },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { display: true, position: 'top', labels: { boxWidth: 12, font: { size: 11 } } },
+            datalabels: { display: false },
+            tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmt(ctx.raw)}` } }
+          },
+          scales: {
+            x: { stacked: true, grid: { display: false } },
+            y: { stacked: true, beginAtZero: true,
+                 ticks: { callback: v => '€' + fmtAxisNum(v) },
+                 grid: { color: 'rgba(0,0,0,.04)' } }
+          }
+        }
+      });
+    }
+
+    function renderGroupChart() {
+      const mode   = document.getElementById('groupChartMode').value || 'tot';
+      const groups = computeGroups(gGrpClients);
+      if (groupChartInstance) groupChartInstance.destroy();
+      if (mode !== 'tot') {
+        groupChartInstance = renderStackedChart('groupChart', gGrpClients,
+          it => it.group || 'Altri', mode, groups.map(g => g.group));
+        return;
+      }
       const labels = groups.map(g => g.group);
       const values = groups.map(g => round2(g.total));
-      if (groupChartInstance) groupChartInstance.destroy();
       groupChartInstance = new Chart(document.getElementById('groupChart'), {
         type: 'bar',
         data: {
@@ -890,8 +989,16 @@
       sel.value = list.some(c => c.id === cur) ? cur : '';
     }
 
-    function renderProductChart(products) {
-      const top    = products.slice(0, 4);
+    function renderProductChart() {
+      const mode     = document.getElementById('productChartMode').value || 'tot';
+      const products = computeProducts(gProdClients);
+      const top      = products.slice(0, 4);
+      if (productChartInstance) productChartInstance.destroy();
+      if (mode !== 'tot') {
+        productChartInstance = renderStackedChart('productChart', gProdClients,
+          it => it.code || 'N/D', mode, top.map(p => p.code || 'N/D'));
+        return;
+      }
       // etichetta asse X: codice su una riga, nome del prodotto fra parentesi sotto
       const labels = top.map(p => {
         const code = p.code || 'N/D';
@@ -900,7 +1007,6 @@
         return name ? [code, `(${name})`] : [code];
       });
       const values = top.map(p => round2(p.total));
-      if (productChartInstance) productChartInstance.destroy();
       productChartInstance = new Chart(document.getElementById('productChart'), {
         type: 'bar',
         data: {
