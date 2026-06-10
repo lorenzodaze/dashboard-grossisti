@@ -142,13 +142,20 @@
           <h2 id="groupChartTitle" class="text-xs font-semibold text-slate-500 uppercase tracking-wider" data-i18n="revenueByGroup">
             Fatturato per gruppo prodotto (dal 2026)
           </h2>
-          <select id="groupChartMode"
-            class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
-                   focus:outline-none focus:ring-2 focus:ring-blue-500">
-            <option value="tot" data-i18n="chartTotal">Totale</option>
-            <option value="month" data-i18n="monthly">Mensile</option>
-            <option value="quarter" data-i18n="quarterly">Trimestrale</option>
-          </select>
+          <div class="flex gap-2 flex-wrap">
+            <select id="groupChartFilter"
+              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                     focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="" data-i18n="allGroups">Tutti i gruppi</option>
+            </select>
+            <select id="groupChartMode"
+              class="border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white
+                     focus:outline-none focus:ring-2 focus:ring-blue-500">
+              <option value="tot" data-i18n="chartTotal">Totale</option>
+              <option value="month" data-i18n="monthly">Mensile</option>
+              <option value="quarter" data-i18n="quarterly">Trimestrale</option>
+            </select>
+          </div>
         </div>
         <canvas id="groupChart" height="70"></canvas>
       </div>
@@ -508,6 +515,7 @@
         document.getElementById('filterTo').value = '';
         document.getElementById('chartGroup').value = '';
         document.getElementById('productGroupFilter').value = '';
+        document.getElementById('groupChartFilter').value = '';
         applyFilters();
       });
       document.getElementById('productSearch').addEventListener('input', applyProductSearch);
@@ -518,6 +526,7 @@
       document.getElementById('productChartMode').addEventListener('change', renderProductChart);
       document.getElementById('groupChartMode').addEventListener('change', renderGroupChart);
       document.getElementById('productGroupFilter').addEventListener('change', renderProductChart);
+      document.getElementById('groupChartFilter').addEventListener('change', renderGroupChart);
 
       applyFilters();
       document.getElementById('loading').classList.add('hidden');
@@ -882,12 +891,15 @@
     }
 
     function renderGroupChart() {
-      const mode   = document.getElementById('groupChartMode').value || 'tot';
-      const groups = computeGroups(gGrpClients);
+      const mode    = document.getElementById('groupChartMode').value || 'tot';
+      const gfilter = document.getElementById('groupChartFilter').value || '';
+      const clients = gfilter ? gGrpClients.map(c => clientByGroup(c, gfilter)) : gGrpClients;
+      const groups  = computeGroups(clients);
       if (groupChartInstance) groupChartInstance.destroy();
       if (mode !== 'tot') {
-        groupChartInstance = renderStackedChart('groupChart', gGrpClients,
-          it => it.group || 'Altri', mode, groups.map(g => g.group));
+        const names = gfilter ? [gfilter] : groups.map(g => g.group);
+        groupChartInstance = renderStackedChart('groupChart', clients,
+          it => it.group || 'Altri', mode, names);
         return;
       }
       const labels = groups.map(g => g.group);
@@ -984,14 +996,15 @@
         list.map(g => `<option value="${g}">${g}</option>`).join('');
       sel.value = list.includes(cur) ? cur : '';
 
-      // stessa lista per il filtro locale del grafico Top prodotti
-      const pSel = document.getElementById('productGroupFilter');
-      if (pSel) {
-        const pCur = pSel.value;
-        pSel.innerHTML = `<option value="">${L.allGroups}</option>` +
+      // stessa lista per i filtri locali dei grafici prodotti/gruppo
+      [document.getElementById('productGroupFilter'),
+       document.getElementById('groupChartFilter')].forEach(s => {
+        if (!s) return;
+        const cv = s.value;
+        s.innerHTML = `<option value="">${L.allGroups}</option>` +
           list.map(g => `<option value="${g}">${g}</option>`).join('');
-        pSel.value = list.includes(pCur) ? pCur : '';
-      }
+        s.value = list.includes(cv) ? cv : '';
+      });
     }
 
     function populateClientFilter(clients) {
