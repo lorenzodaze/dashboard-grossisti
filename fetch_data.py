@@ -139,6 +139,12 @@ GROUP_DEFS = {
         'alfieri', 'cet s.p', 'edif', 'barcella', 'megawatt',
         'cameg', 'verrocchio', 'energia italia', 'asso sicurezza',
     ],
+    'Corime': [
+        'elettrica ceb', 'mencacci', 'maril', 'elettrica 88', 'euro elettrica',
+        'e.d.a.', 'fime srl', 'gbr', 'g.m. elettron', 'alese', 'vimel',
+        'tmc trading', 'battistini', 'zx group', 'calvarese', 'val di sangro',
+        'ceit', 'friva', 'b.i.me', 'meid', 'comest', 'frascella',
+    ],
 }
 # Nomi che NON appartengono al gruppo pur contenendo un pattern (falsi positivi noti)
 GROUP_EXCLUDE = {
