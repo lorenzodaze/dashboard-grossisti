@@ -616,17 +616,20 @@
 
       // Grafici prodotti/gruppi: default dal 2026; se l'utente imposta un range
       // di date, prevale quello.
-      const group = document.getElementById('chartGroup').value || '';
+      const group  = document.getElementById('chartGroup').value || '';
+      const cgroup = document.getElementById('filterGroup').value || '';
       const userDateSet = !!(from || to);
       const effFrom = userDateSet ? from : '2026-01-01';
       const effTo   = to;
-      // Scope senza filtro gruppo (per il grafico "Fatturato per gruppo prodotto",
-      // così mostra tutte le categorie e l'utente vede sempre la ripartizione).
+      // Scope senza filtro gruppo PRODOTTO (per il grafico "Fatturato per gruppo
+      // prodotto", così mostra tutte le categorie); rispetta però nazione/regione/
+      // cliente, gruppo d'acquisto e intervallo date.
       const productScopeAll = (dashData.clients || [])
         .filter(c =>
           (!country || c.country === country) &&
           (!region  || c.region  === region) &&
-          (!clientId || c.id     === clientId))
+          (!clientId || c.id     === clientId) &&
+          (!cgroup  || (c.groups || []).includes(cgroup)))
         .map(c => clientInRange(c, effFrom, effTo));
       // Scope con filtro gruppo (per il Top 4 prodotti)
       const productScopeFiltered = productScopeAll.map(c => clientByGroup(c, group));
