@@ -342,6 +342,23 @@
                            '#10b981','#3b82f6','#fbbf24','#ec4899','#14b8a6',
                            '#8b5cf6','#fb923c'];
 
+    // Aree commerciali = raggruppamenti di regioni
+    const REGION_AREAS = {
+      'Area Luca Falconi': ['Lombardia Est','Emilia-Romagna','Lazio','Toscana',
+                            'Umbria','Puglia','Calabria','Campania','Basilicata'],
+      'Area Alessandro Marinelli': ['Piemonte','Liguria',"Valle d'Aosta",
+                            'Lombardia Ovest','Triveneto','Abruzzo','Molise',
+                            'Sicilia','Sardegna'],
+    };
+
+    function regionMatch(c, region) {
+      if (!region) return true;
+      if (region.startsWith('area:')) {
+        return (REGION_AREAS[region.slice(5)] || []).includes(c.region);
+      }
+      return c.region === region;
+    }
+
     if (window.ChartDataLabels) Chart.register(ChartDataLabels);
 
     // Formattazione con punto separatore delle migliaia (indipendente dal browser)
@@ -581,7 +598,7 @@
       return (dashData.clients || [])
         .filter(c =>
           (!country || c.country === country) &&
-          (!region  || c.region  === region) &&
+          regionMatch(c, region) &&
           (!client  || c.id      === client) &&
           (!cgroup  || (c.groups || []).includes(cgroup)))
         .map(c => clientInRange(c, from, to))
@@ -602,7 +619,8 @@
       const dateLbl = (from || to) ? `${from || '…'} → ${to || todayWord}` : '';
       const groupLbl  = document.getElementById('chartGroup').value || '';
       const cgroupLbl = document.getElementById('filterGroup').value || '';
-      const scope   = [country, region, cgroupLbl, clientName, dateLbl, groupLbl].filter(Boolean).join(' · ');
+      const regionLbl = region.startsWith('area:') ? region.slice(5) : region;
+      const scope   = [country, regionLbl, cgroupLbl, clientName, dateLbl, groupLbl].filter(Boolean).join(' · ');
       document.getElementById('filterScope').textContent =
         scope ? `${L.scope}: ${scope}` : `${L.scope}: ${L.allClientsLc}`;
 
@@ -627,7 +645,7 @@
       const productScopeAll = (dashData.clients || [])
         .filter(c =>
           (!country || c.country === country) &&
-          (!region  || c.region  === region) &&
+          regionMatch(c, region) &&
           (!clientId || c.id     === clientId) &&
           (!cgroup  || (c.groups || []).includes(cgroup)))
         .map(c => clientInRange(c, effFrom, effTo));
@@ -961,9 +979,15 @@
       const cur     = sel.value;
       const list    = country ? clients.filter(c => c.country === country) : clients;
       const regions = [...new Set(list.map(c => c.region).filter(Boolean))].sort();
-      sel.innerHTML = `<option value="">${L.allRegions}</option>` +
+      // Aree commerciali (solo per l'Italia o nessuna nazione selezionata)
+      const areaOpts = (!country || country === 'Italy')
+        ? Object.keys(REGION_AREAS).map(a =>
+            `<option value="area:${a}">${a}</option>`).join('')
+        : '';
+      sel.innerHTML = `<option value="">${L.allRegions}</option>` + areaOpts +
         regions.map(r => `<option value="${r}">${r}</option>`).join('');
-      sel.value = regions.includes(cur) ? cur : '';
+      const valid = cur === '' || cur.startsWith('area:') || regions.includes(cur);
+      sel.value = valid ? cur : '';
     }
 
     function populateClientGroupFilter(clients) {
@@ -1006,7 +1030,7 @@
       const sel     = document.getElementById('filterClient');
       const cur     = sel.value;
       const list    = clients
-        .filter(c => (!country || c.country === country) && (!region || c.region === region))
+        .filter(c => (!country || c.country === country) && regionMatch(c, region))
         .sort((a,b) => (a.name||'').localeCompare(b.name||''));
       sel.innerHTML = `<option value="">${L.allClients}</option>` +
         list.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
