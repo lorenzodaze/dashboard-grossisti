@@ -161,6 +161,24 @@ def groups_for(name):
     return out
 
 
+# Aziende le cui filiali (per citta') vanno unite in un'unica voce.
+# chiave = nome canonico mostrato, valore = sottostringhe (lowercase) da abbinare.
+MERGE_COMPANIES = {
+    'Electro Avilés': ['electro avil'],
+}
+
+
+def merged_identity(aid, name):
+    """Restituisce (chiave, nome) unificati: se il nome dell'account corrisponde
+    a una azienda da consolidare, usa il nome canonico; altrimenti l'account resta
+    distinto (chiave = id, nome originale)."""
+    n = (name or '').lower()
+    for canon, pats in MERGE_COMPANIES.items():
+        if any(p in n for p in pats):
+            return 'merge:' + canon, canon
+    return aid, name
+
+
 def main():
     today = date.today()
     token = get_token()
@@ -257,8 +275,8 @@ def main():
     # --- Struttura per cliente ---
     clients = {}
     for order in orders_raw:
-        aid   = order['_account_id']
-        aname = order['_account_name']
+        # Unisce eventuali filiali nella stessa voce (es. Electro Avilés)
+        aid, aname = merged_identity(order['_account_id'], order['_account_name'])
 
         date_str = order.get('Date', '')
         # Use Shipping_Date for monthly/quarterly allocation; fall back to Date
