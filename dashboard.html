@@ -667,10 +667,10 @@
       const qPrev2 = sumQuarter(clients, quarters[2]);
       const delta  = pctChange(qCur, qPrev);
       const kpis = [
-        { label:L.currentMonth,    sub:d.current_month_label||'', value:month,  delta:null },
-        { label:L.currentQuarter,  sub:quarters[0]||'',           value:qCur,   delta },
-        { label:L.previousQuarter, sub:quarters[1]||'',           value:qPrev,  delta:null },
         { label:L.twoQuartersAgo,  sub:quarters[2]||'',           value:qPrev2, delta:null },
+        { label:L.previousQuarter, sub:quarters[1]||'',           value:qPrev,  delta:null },
+        { label:L.currentQuarter,  sub:quarters[0]||'',           value:qCur,   delta },
+        { label:L.currentMonth,    sub:d.current_month_label||'', value:month,  delta:null },
       ];
       document.getElementById('kpiCards').innerHTML = kpis.map((k, i) => {
         const c = KPI_COLORS[i];
