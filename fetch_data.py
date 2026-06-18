@@ -3,12 +3,17 @@ import json
 import base64
 import requests
 import calendar
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from cryptography.hazmat.primitives.kdf.pbkdf2 import PBKDF2HMAC
 from cryptography.hazmat.primitives import hashes
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 PBKDF2_ITERATIONS = 200000
+
+# Cache locale (NON committata: vive nella cache di GitHub Actions) delle righe
+# ordine. Gli ordini piu' vecchi di FRESH_DAYS non vengono riscaricati.
+ITEMS_CACHE_FILE = 'items_cache.json'
+FRESH_DAYS = 120
 
 
 def encrypt_json(obj, password):
@@ -250,15 +255,43 @@ def main():
             orders_raw.append(o)
     print(f"Wholesaler orders: {len(orders_raw)}")
 
-    # --- Ordered Items: embedded nel record ordine, fetch individuale ---
-    print(f"Fetching full order records for {len(orders_raw)} orders...")
+    # --- Ordered Items: con cache incrementale ---
+    # Carica la cache (se presente dalla run precedente).
+    cache = {}
+    if os.path.exists(ITEMS_CACHE_FILE):
+        try:
+            with open(ITEMS_CACHE_FILE, encoding='utf-8') as f:
+                cache = json.load(f)
+        except (ValueError, OSError):
+            cache = {}
+    print(f"Items cache: {len(cache)} ordini in cache")
+
+    cutoff = (today - timedelta(days=FRESH_DAYS)).strftime('%Y-%m-%d')
     items_by_order = {}
+    fetched = reused = 0
     for i, order in enumerate(orders_raw):
-        oid = order['id']
-        items_by_order[oid] = get_order_items(token, oid)
-        if (i + 1) % 50 == 0:
-            print(f"  {i+1}/{len(orders_raw)} orders processed")
-    print(f"Items loaded for {len(items_by_order)} orders")
+        oid   = order['id']
+        odate = order.get('Shipping_Date') or order.get('Date') or ''
+        # Riscarica solo gli ordini recenti (entro FRESH_DAYS) o non ancora in cache;
+        # i piu' vecchi si riusano dalla cache perche' non cambiano.
+        if odate >= cutoff or oid not in cache:
+            cache[oid] = get_order_items(token, oid)
+            fetched += 1
+            if fetched % 50 == 0:
+                print(f"  {fetched} ordini scaricati...")
+        else:
+            reused += 1
+        items_by_order[oid] = cache[oid]
+
+    # Mantiene in cache solo gli ordini ancora presenti (evita crescita illimitata)
+    cache = {oid: cache[oid] for oid in items_by_order}
+    try:
+        with open(ITEMS_CACHE_FILE, 'w', encoding='utf-8') as f:
+            json.dump(cache, f)
+    except OSError:
+        pass
+    print(f"Items: {fetched} scaricati, {reused} riusati da cache "
+          f"(su {len(orders_raw)} ordini)")
 
     # --- Quarters list ---
     cq, cy = quarter_of(today)

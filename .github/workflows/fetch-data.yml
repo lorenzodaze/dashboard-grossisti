@@ -24,6 +24,14 @@ jobs:
       - name: Installa dipendenze
         run: pip install requests cryptography
 
+      - name: Ripristina cache righe ordine
+        uses: actions/cache@v4
+        with:
+          path: items_cache.json
+          key: items-cache-${{ github.run_id }}
+          restore-keys: |
+            items-cache-
+
       - name: Scarica dati da Zoho CRM
         env:
           ZOHO_CLIENT_ID:     ${{ secrets.ZOHO_CLIENT_ID }}

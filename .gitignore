@@ -1,0 +1,3 @@
+# Cache locale delle righe ordine (persiste nella cache di GitHub Actions,
+# non va committata: conterrebbe dati in chiaro nel repo pubblico)
+items_cache.json
