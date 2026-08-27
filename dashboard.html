@@ -112,6 +112,7 @@
             <option value="C" data-i18n="quarterly">Trimestrale</option>
             <option value="D" data-i18n="quarterlyYoY">Trimestrale – confronto anni</option>
             <option value="W" data-i18n="weekly">Settimanale</option>
+            <option value="X" data-i18n="weeklyYoY">Settimanale – confronto anni</option>
           </select>
         </div>
         <canvas id="monthlyChart" height="70"></canvas>
@@ -231,7 +232,7 @@
         revenueChart: 'Fatturato – da gennaio 2025',
         monthly: 'Mensile', monthlyYoY: 'Mensile – confronto anni',
         quarterly: 'Trimestrale', quarterlyYoY: 'Trimestrale – confronto anni',
-        chartTotal: 'Totale', weekly: 'Settimanale',
+        chartTotal: 'Totale', weekly: 'Settimanale', weeklyYoY: 'Settimanale – confronto anni',
         top4Products: 'Top 4 prodotti per fatturato (dal 2026)',
         top4ProductsRange: 'Top 4 prodotti per fatturato',
         revenueByGroup: 'Fatturato per gruppo prodotto (dal 2026)',
@@ -266,7 +267,7 @@
         revenueChart: 'Revenue – from January 2025',
         monthly: 'Monthly', monthlyYoY: 'Monthly – year comparison',
         quarterly: 'Quarterly', quarterlyYoY: 'Quarterly – year comparison',
-        chartTotal: 'Total', weekly: 'Weekly',
+        chartTotal: 'Total', weekly: 'Weekly', weeklyYoY: 'Weekly – year comparison',
         top4Products: 'Top 4 products by revenue (from 2026)',
         top4ProductsRange: 'Top 4 products by revenue',
         revenueByGroup: 'Revenue by product group (from 2026)',
@@ -474,6 +475,20 @@
       }
       return out;
     }
+    // Numero di settimana ISO e anno-ISO di una data
+    function isoWeek(dstr) {
+      const [y, m, d] = dstr.split('-').map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      const day = (dt.getUTCDay() + 6) % 7;
+      dt.setUTCDate(dt.getUTCDate() - day + 3);          // giovedì di questa settimana
+      const isoYear = dt.getUTCFullYear();
+      const firstThu = new Date(Date.UTC(isoYear, 0, 4));
+      const fd = (firstThu.getUTCDay() + 6) % 7;
+      firstThu.setUTCDate(firstThu.getUTCDate() - fd + 3);
+      const week = 1 + Math.round((dt - firstThu) / (7 * 86400000));
+      return { year: isoYear, week };
+    }
+
     // Somma il fatturato per settimana (chiave = lunedì) sugli ordini in scope
     function weeklyTotals(clients) {
       const map = {};
@@ -828,6 +843,25 @@
             round2(sMon(clients, `${yr}-${String(i+1).padStart(2,'0')}`))),
           backgroundColor: YEAR_COLORS[idx % YEAR_COLORS.length],
           borderRadius: 5, borderSkipped: false,
+        }));
+      } else if (mode === 'X') {                // settimanale, anni affiancati
+        grouped = true;
+        const agg = {}, yset = new Set();
+        clients.forEach(c => (c.orders || []).forEach(o => {
+          const dd = o.ship || o.date;
+          if (!dd) return;
+          const w = isoWeek(dd);
+          yset.add(w.year);
+          (agg[w.year] = agg[w.year] || {})[w.week] =
+            (agg[w.year][w.week] || 0) + (o.total || 0);
+        }));
+        const maxWeek = 53;
+        labels = Array.from({ length: maxWeek }, (_, i) => `S${i + 1}`);
+        datasets = [...yset].sort().map((yr, idx) => ({
+          label: String(yr),
+          data: Array.from({ length: maxWeek }, (_, i) => round2((agg[yr] && agg[yr][i + 1]) || 0)),
+          backgroundColor: YEAR_COLORS[idx % YEAR_COLORS.length],
+          borderRadius: 3, borderSkipped: false,
         }));
       } else {                                  // mode D: trimestrale, anni affiancati
         grouped = true;
