@@ -29,10 +29,16 @@
           <p class="text-xs text-slate-400" id="lastUpdate">Caricamento...</p>
         </div>
       </div>
-      <button onclick="logout()" data-i18n="logout"
-        class="text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
-        Esci
-      </button>
+      <div class="flex items-center gap-2">
+        <button id="exportBtn" onclick="exportOrders()"
+          class="hidden text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors">
+          Export
+        </button>
+        <button onclick="logout()" data-i18n="logout"
+          class="text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
+          Esci
+        </button>
+      </div>
     </div>
   </header>
 
@@ -304,6 +310,39 @@
       window.location.href = 'index.html';
     }
 
+    // Scarica TUTTI gli ordini in CSV (apribile in Excel), stesse colonne del
+    // report Zoho. Una riga per ordine.
+    function exportOrders() {
+      const header = ['Category','Date','Order Number','Company','SAP Order code',
+        'Order Owner','Total','Type','Source','Country','Country dip','Region',
+        'Bought From','so.Order Type'];
+      const rows = [header];
+      (dashData.clients || []).forEach(c => (c.orders || []).forEach(o => {
+        const d  = o.ship || o.date || '';
+        const dd = d ? d.split('-').reverse().join('/') : '';   // gg/mm/aaaa
+        rows.push([
+          'Wholesaler', dd, o.onum || '', c.name || '', o.sap || '',
+          o.owner || '', (Number(o.total) || 0).toFixed(2).replace('.', ','),
+          'Wholesaler', '', c.country || '', c.country || '',
+          c.region_raw || c.region || '', '', 'Sales',
+        ]);
+      }));
+      const esc = v => {
+        v = String(v == null ? '' : v);
+        return /[";\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+      };
+      const csv  = '﻿' + rows.map(r => r.map(esc).join(';')).join('\r\n');
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = 'ordini_grossisti_' + new Date().toISOString().slice(0, 10) + '.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    }
+
     async function decryptEnc(enc, password) {
       const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
       const salt = b64(enc.salt), iv = b64(enc.iv), ct = b64(enc.ct);
@@ -491,12 +530,14 @@
         document.getElementById('filterRegion').classList.add('hidden');
       }
 
-      // Il filtro "Gruppi" (gruppi d'acquisto) compare solo nella vista completa
+      // Il filtro "Gruppi" (gruppi d'acquisto) e il pulsante Export compaiono
+      // solo nella vista completa
       if (DASH_RESTRICTED) {
         document.getElementById('filterGroup').classList.add('hidden');
       } else {
         populateClientGroupFilter(clients);
         document.getElementById('filterGroup').addEventListener('change', applyFilters);
+        document.getElementById('exportBtn').classList.remove('hidden');
       }
 
       populateCountryFilter(clients);

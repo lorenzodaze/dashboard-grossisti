@@ -196,10 +196,11 @@ def main():
     print(f"Wholesaler accounts: {len(accounts)}")
     wholesaler_ids = {a['id'] for a in accounts}
     acct_info      = {a['id']: {
-        'name':     a.get('Account_Name', '') or '',
-        'country':  a.get('Country', '') or '',
-        'region':   remap_region(a.get('Region', ''), a.get('State_Province', '')),
-        'province': (a.get('State_Province', '') or '').strip(),
+        'name':       a.get('Account_Name', '') or '',
+        'country':    a.get('Country', '') or '',
+        'region':     remap_region(a.get('Region', ''), a.get('State_Province', '')),
+        'region_raw': (a.get('Region', '') or '').strip(),
+        'province':   (a.get('State_Province', '') or '').strip(),
     } for a in accounts}
 
     if not wholesaler_ids:
@@ -221,7 +222,8 @@ def main():
     #     ~2000 record per query, quindi una singola ricerca su 2 anni taglierebbe
     #     via lo storico piu' vecchio). Si parte da gennaio di 2 anni fa.
     order_fields = ('id,SO_Number,Account_Name,Date,Shipping_Date,'
-                    'Sub_Total,Checkout_Discount,Checkout_discount_value')
+                    'Sub_Total,Checkout_Discount,Checkout_discount_value,'
+                    'Number_Quote,Order_Code,Owner')
     start_year = 2025
     print(f"Fetching orders month by month from {start_year}-01 to {today.strftime('%Y-%m')}...")
     all_orders = []
@@ -249,9 +251,10 @@ def main():
             info = acct_info.get(acct.get('id', ''), {})
             o['_account_id']       = acct.get('id', '')
             o['_account_name']     = info.get('name') or acct.get('name', '')
-            o['_account_country']  = info.get('country', '')
-            o['_account_region']   = info.get('region', '')
-            o['_account_province'] = info.get('province', '')
+            o['_account_country']    = info.get('country', '')
+            o['_account_region']     = info.get('region', '')
+            o['_account_region_raw'] = info.get('region_raw', '')
+            o['_account_province']   = info.get('province', '')
             orders_raw.append(o)
     print(f"Wholesaler orders: {len(orders_raw)}")
 
@@ -336,10 +339,11 @@ def main():
             clients[aid] = {
                 'id':      aid,
                 'name':    aname,
-                'country':  order.get('_account_country', ''),
-                'region':   order.get('_account_region', ''),
-                'province': order.get('_account_province', ''),
-                'groups':   groups_for(aname),
+                'country':    order.get('_account_country', ''),
+                'region':     order.get('_account_region', ''),
+                'region_raw': order.get('_account_region_raw', ''),
+                'province':   order.get('_account_province', ''),
+                'groups':     groups_for(aname),
                 'quarterly': {}, 'monthly': {}, 'orders': []
             }
 
@@ -365,13 +369,17 @@ def main():
                 'total': round(item_net  * disc_factor, 2),
             })
 
+        owner = order.get('Owner') or {}
         c['orders'].append({
-            'id':    order['id'],
-            'num':   order.get('SO_Number', ''),
-            'date':  date_str,
-            'ship':  ship_str,
-            'total': total,
-            'items': items_out,
+            'id':     order['id'],
+            'num':    order.get('SO_Number', ''),
+            'onum':   order.get('Number_Quote', '') or '',   # "Order Number" (269777)
+            'sap':    order.get('Order_Code', '') or '',      # "SAP Order code"
+            'owner':  owner.get('name', '') if isinstance(owner, dict) else '',
+            'date':   date_str,
+            'ship':   ship_str,
+            'total':  total,
+            'items':  items_out,
         })
 
     # La dashboard ricalcola tutto lato browser dai dati per-cliente, quindi
