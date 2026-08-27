@@ -30,9 +30,13 @@
         </div>
       </div>
       <div class="flex items-center gap-2">
-        <button id="exportBtn" onclick="exportOrders()"
+        <button id="exportFilteredBtn" onclick="exportOrders(true)"
           class="hidden text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition-colors">
-          Export
+          Export filtrato
+        </button>
+        <button id="exportAllBtn" onclick="exportOrders(false)"
+          class="hidden text-xs font-medium text-white bg-slate-600 hover:bg-slate-700 px-3 py-1.5 rounded-lg transition-colors">
+          Export tutto
         </button>
         <button onclick="logout()" data-i18n="logout"
           class="text-xs text-slate-400 hover:text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-100 transition-colors">
@@ -313,16 +317,18 @@
       window.location.href = 'index.html';
     }
 
-    // Scarica TUTTI i dati in CSV (apribile in Excel): una riga per articolo
-    // ordinato, stesse colonne del report Zoho.
-    function exportOrders() {
+    // Scarica i dati in CSV (apribile in Excel): una riga per articolo ordinato,
+    // stesse colonne del report Zoho. filtered=true rispetta i filtri attivi
+    // (nazione/regione/cliente/gruppi/date); false esporta tutti i dati.
+    function exportOrders(filtered) {
+      const src = filtered ? filteredClients() : (dashData.clients || []);
       const header = ['Numero documento','Rif. cliente','Data consegna','Mese','Anno',
         'Codice BP','Nome BP','Client Type','Codice prodotto','Gruppo Prodotto',
         'Quantity','Total','Causale','Paese fatturazione','Regione fatturazione',
         'Provincia fatturazione','Città fatturazione','Indirizzo fatturazione'];
       const rows = [header];
       const numIt = n => (Number(n) || 0).toString().replace('.', ',');
-      (dashData.clients || []).forEach(c => (c.orders || []).forEach(o => {
+      src.forEach(c => (c.orders || []).forEach(o => {
         const d  = o.ship || o.date || '';
         const dd = d ? d.split('-').reverse().join('/') : '';   // gg/mm/aaaa
         const [yy, mm] = d ? d.split('-') : ['', ''];
@@ -347,7 +353,8 @@
       const url  = URL.createObjectURL(blob);
       const a    = document.createElement('a');
       a.href = url;
-      a.download = 'ordini_grossisti_' + new Date().toISOString().slice(0, 10) + '.csv';
+      a.download = 'ordini_' + (filtered ? 'filtrati_' : 'tutti_') +
+        new Date().toISOString().slice(0, 10) + '.csv';
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -386,6 +393,7 @@
     let scopeClients  = [];
     let gProdClients  = [];
     let gGrpClients   = [];
+    let gChartFull    = [];   // clienti filtrati (no data) per i confronti anno-su-anno
 
     // Palette per i grafici impilati (mese/trimestre a confronto)
     const STACK_PALETTE = ['#34d399','#60a5fa','#f59e0b','#a78bfa','#f87171',
@@ -594,7 +602,8 @@
       } else {
         populateClientGroupFilter(clients);
         document.getElementById('filterGroup').addEventListener('change', applyFilters);
-        document.getElementById('exportBtn').classList.remove('hidden');
+        document.getElementById('exportFilteredBtn').classList.remove('hidden');
+        document.getElementById('exportAllBtn').classList.remove('hidden');
       }
 
       populateCountryFilter(clients);
@@ -722,6 +731,15 @@
       document.getElementById('filterScope').textContent =
         scope ? `${L.scope}: ${scope}` : `${L.scope}: ${L.allClientsLc}`;
 
+      // Set non tagliato per data (per i confronti anno-su-anno del grafico)
+      gChartFull = (dashData.clients || [])
+        .filter(c =>
+          (!country || c.country === country) &&
+          regionMatch(c, region) &&
+          (!clientId || c.id === clientId) &&
+          (!cgroupLbl || (c.groups || []).includes(cgroupLbl)))
+        .map(c => clientByGroup(c, groupLbl));
+
       scopeClients = clients;
       renderChart(clients, dashData);
       renderKpis(clients, dashData);
@@ -796,6 +814,26 @@
       const years = [...new Set(monthsFrom2025(d.current_month).map(x => x.y))];
       let labels, datasets, grouped = false;
 
+      // Categorie ammesse dal filtro data (usate SOLO nei confronti anno-su-anno,
+      // così compare lo stesso periodo anche dell'anno precedente)
+      let allowM = null, allowQ = null, allowW = null;
+      if (from || to) {
+        allowM = new Set(); allowQ = new Set(); allowW = new Set();
+        const endStr = to || new Date().toISOString().slice(0, 10);
+        let wdt = mondayOf(from || '2025-01-01');
+        const wend = mondayOf(endStr);
+        while (wdt <= wend) {
+          allowW.add(isoWeek(wdt.toISOString().slice(0, 10)).week);
+          wdt = new Date(wdt.getTime() + 7 * 86400000);
+        }
+        let [yy, mm] = (from || '2025-01').slice(0, 7).split('-').map(Number);
+        const [ey, em] = endStr.slice(0, 7).split('-').map(Number);
+        while (yy < ey || (yy === ey && mm <= em)) {
+          allowM.add(mm); allowQ.add(Math.floor((mm - 1) / 3) + 1);
+          mm++; if (mm > 12) { mm = 1; yy++; }
+        }
+      }
+
       if (mode === 'A') {                       // mensile cronologico
         let ms = monthsFrom2025(d.current_month);
         if (from) ms = ms.filter(x => x.key >= from.slice(0, 7));
@@ -836,18 +874,18 @@
         }];
       } else if (mode === 'B') {                // mensile, anni affiancati
         grouped = true;
-        labels = MONTHS_SHORT;
+        const idxs = [...Array(12).keys()].filter(i => !allowM || allowM.has(i + 1));
+        labels = idxs.map(i => MONTHS_SHORT[i]);
         datasets = years.map((yr, idx) => ({
           label: String(yr),
-          data: Array.from({length:12}, (_, i) =>
-            round2(sMon(clients, `${yr}-${String(i+1).padStart(2,'0')}`))),
+          data: idxs.map(i => round2(sMon(gChartFull, `${yr}-${String(i+1).padStart(2,'0')}`))),
           backgroundColor: YEAR_COLORS[idx % YEAR_COLORS.length],
           borderRadius: 5, borderSkipped: false,
         }));
       } else if (mode === 'X') {                // settimanale, anni affiancati
         grouped = true;
         const agg = {}, yset = new Set();
-        clients.forEach(c => (c.orders || []).forEach(o => {
+        gChartFull.forEach(c => (c.orders || []).forEach(o => {
           const dd = o.ship || o.date;
           if (!dd) return;
           const w = isoWeek(dd);
@@ -855,20 +893,22 @@
           (agg[w.year] = agg[w.year] || {})[w.week] =
             (agg[w.year][w.week] || 0) + (o.total || 0);
         }));
-        const maxWeek = 53;
-        labels = Array.from({ length: maxWeek }, (_, i) => `S${i + 1}`);
+        const weeks = Array.from({ length: 53 }, (_, i) => i + 1)
+          .filter(w => !allowW || allowW.has(w));
+        labels = weeks.map(w => `S${w}`);
         datasets = [...yset].sort().map((yr, idx) => ({
           label: String(yr),
-          data: Array.from({ length: maxWeek }, (_, i) => round2((agg[yr] && agg[yr][i + 1]) || 0)),
+          data: weeks.map(w => round2((agg[yr] && agg[yr][w]) || 0)),
           backgroundColor: YEAR_COLORS[idx % YEAR_COLORS.length],
           borderRadius: 3, borderSkipped: false,
         }));
       } else {                                  // mode D: trimestrale, anni affiancati
         grouped = true;
-        labels = ['Q1','Q2','Q3','Q4'];
+        const qs = [1,2,3,4].filter(q => !allowQ || allowQ.has(q));
+        labels = qs.map(q => 'Q' + q);
         datasets = years.map((yr, idx) => ({
           label: String(yr),
-          data: [1,2,3,4].map(q => round2(sQrt(clients, `Q${q} ${yr}`))),
+          data: qs.map(q => round2(sQrt(gChartFull, `Q${q} ${yr}`))),
           backgroundColor: YEAR_COLORS[idx % YEAR_COLORS.length],
           borderRadius: 5, borderSkipped: false,
         }));
