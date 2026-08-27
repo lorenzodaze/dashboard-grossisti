@@ -111,6 +111,7 @@
             <option value="B" data-i18n="monthlyYoY">Mensile – confronto anni</option>
             <option value="C" data-i18n="quarterly">Trimestrale</option>
             <option value="D" data-i18n="quarterlyYoY">Trimestrale – confronto anni</option>
+            <option value="W" data-i18n="weekly">Settimanale</option>
           </select>
         </div>
         <canvas id="monthlyChart" height="70"></canvas>
@@ -230,7 +231,7 @@
         revenueChart: 'Fatturato – da gennaio 2025',
         monthly: 'Mensile', monthlyYoY: 'Mensile – confronto anni',
         quarterly: 'Trimestrale', quarterlyYoY: 'Trimestrale – confronto anni',
-        chartTotal: 'Totale',
+        chartTotal: 'Totale', weekly: 'Settimanale',
         top4Products: 'Top 4 prodotti per fatturato (dal 2026)',
         top4ProductsRange: 'Top 4 prodotti per fatturato',
         revenueByGroup: 'Fatturato per gruppo prodotto (dal 2026)',
@@ -265,7 +266,7 @@
         revenueChart: 'Revenue – from January 2025',
         monthly: 'Monthly', monthlyYoY: 'Monthly – year comparison',
         quarterly: 'Quarterly', quarterlyYoY: 'Quarterly – year comparison',
-        chartTotal: 'Total',
+        chartTotal: 'Total', weekly: 'Weekly',
         top4Products: 'Top 4 products by revenue (from 2026)',
         top4ProductsRange: 'Top 4 products by revenue',
         revenueByGroup: 'Revenue by product group (from 2026)',
@@ -451,6 +452,38 @@
         q++; if (q > 4) { q = 1; y++; }
       }
       return arr;
+    }
+
+    // Lunedì (UTC) della settimana che contiene la data data
+    function mondayOf(dstr) {
+      const [y, m, d] = dstr.split('-').map(Number);
+      const dt = new Date(Date.UTC(y, m - 1, d));
+      const dow = (dt.getUTCDay() + 6) % 7;   // 0 = lunedì
+      dt.setUTCDate(dt.getUTCDate() - dow);
+      return dt;
+    }
+    // Tutte le settimane (lunedì) da gennaio 2025 a oggi
+    function weeksFrom2025() {
+      const today = new Date();
+      const end = mondayOf(today.toISOString().slice(0, 10));
+      const out = [];
+      let dt = mondayOf('2025-01-01');
+      while (dt <= end) {
+        out.push(dt.toISOString().slice(0, 10));
+        dt = new Date(dt.getTime() + 7 * 86400000);
+      }
+      return out;
+    }
+    // Somma il fatturato per settimana (chiave = lunedì) sugli ordini in scope
+    function weeklyTotals(clients) {
+      const map = {};
+      clients.forEach(c => (c.orders || []).forEach(o => {
+        const d = o.ship || o.date;
+        if (!d) return;
+        const k = mondayOf(d).toISOString().slice(0, 10);
+        map[k] = (map[k] || 0) + (o.total || 0);
+      }));
+      return map;
     }
 
     // --- aggregazioni client-side dai dati per-cliente ---
@@ -765,6 +798,17 @@
           backgroundColor: values.map((_, i) => i === values.length - 1
             ? 'rgba(37,99,235,0.9)' : 'rgba(37,99,235,0.45)'),
           borderRadius: 5, borderSkipped: false,
+        }];
+      } else if (mode === 'W') {                // settimanale cronologico
+        const wk = weeksFrom2025();
+        const totals = weeklyTotals(clients);
+        labels = wk.map(k => { const p = k.split('-'); return `${p[2]}/${p[1]}`; });
+        const values = wk.map(k => round2(totals[k] || 0));
+        datasets = [{
+          data: values,
+          backgroundColor: values.map((_, i) => i === values.length - 1
+            ? 'rgba(37,99,235,0.9)' : 'rgba(37,99,235,0.45)'),
+          borderRadius: 3, borderSkipped: false,
         }];
       } else if (mode === 'B') {                // mensile, anni affiancati
         grouped = true;
