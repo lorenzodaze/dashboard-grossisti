@@ -203,18 +203,19 @@
 
   <script>
     const MODES = {
-      A: { file: 'full.enc',      label: '',           lang: 'it' },
-      B: { file: 'triveneto.enc', label: 'Triveneto',  lang: 'it' },
-      C: { file: 'lazio.enc',     label: 'Lazio',         lang: 'it' },
-      D: { file: 'portugal.enc',  label: 'Portugal',      lang: 'en' },
-      E: { file: 'puglia.enc',    label: 'Puglia+Matera', lang: 'it' },
+      A: { file: 'full.enc',      label: '',              lang: 'it', restricted: false },
+      B: { file: 'triveneto.enc', label: 'Triveneto',     lang: 'it', restricted: true  },
+      C: { file: 'lazio.enc',     label: 'Lazio',         lang: 'it', restricted: true  },
+      D: { file: 'portugal.enc',  label: 'Portugal',      lang: 'en', restricted: true  },
+      E: { file: 'puglia.enc',    label: 'Puglia+Matera', lang: 'it', restricted: true  },
+      F: { file: 'global.enc',    label: 'Global',        lang: 'it', restricted: false },
     };
     const DASH_MODE = sessionStorage.getItem('dashMode');
     const DASH_PWD  = sessionStorage.getItem('dashPwd');
     if (!DASH_MODE || !DASH_PWD || !MODES[DASH_MODE]) window.location.href = 'index.html';
     const DASH_INFO       = MODES[DASH_MODE] || MODES.A;
     const DATA_FILE       = DASH_INFO.file;
-    const DASH_RESTRICTED = DASH_INFO.label !== '';
+    const DASH_RESTRICTED = !!DASH_INFO.restricted;
     const LANG = DASH_INFO.lang || 'it';
 
     const T_BUNDLES = {

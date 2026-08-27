@@ -189,25 +189,24 @@ def main():
     token = get_token()
     print("Token OK")
 
-    # --- Wholesaler accounts ---
-    print("Fetching wholesaler accounts...")
-    accounts = search_records(token, 'Accounts',
-        '(Client_type:equals:Wholesaler)',
-        'id,Account_Name,Country,Region,State_Province,Billing_City,Billing_Street')
-    print(f"Wholesaler accounts: {len(accounts)}")
-    wholesaler_ids = {a['id'] for a in accounts}
+    # --- Tutti gli account (serve per la vista Global con ogni Client Type) ---
+    print("Fetching all accounts...")
+    accounts = get_all_records(token, 'Accounts',
+        'id,Account_Name,Country,Region,State_Province,Billing_City,Billing_Street,Client_type')
+    print(f"Accounts: {len(accounts)}")
     acct_info      = {a['id']: {
-        'name':       a.get('Account_Name', '') or '',
-        'country':    a.get('Country', '') or '',
-        'region':     remap_region(a.get('Region', ''), a.get('State_Province', '')),
-        'region_raw': (a.get('Region', '') or '').strip(),
-        'province':   (a.get('State_Province', '') or '').strip(),
-        'city':       (a.get('Billing_City', '') or '').strip(),
-        'street':     (a.get('Billing_Street', '') or '').strip(),
+        'name':        a.get('Account_Name', '') or '',
+        'country':     a.get('Country', '') or '',
+        'region':      remap_region(a.get('Region', ''), a.get('State_Province', '')),
+        'region_raw':  (a.get('Region', '') or '').strip(),
+        'province':    (a.get('State_Province', '') or '').strip(),
+        'city':        (a.get('Billing_City', '') or '').strip(),
+        'street':      (a.get('Billing_Street', '') or '').strip(),
+        'client_type': (a.get('Client_type', '') or '').strip(),
     } for a in accounts}
 
-    if not wholesaler_ids:
-        print("No wholesaler accounts found.")
+    if not acct_info:
+        print("No accounts found.")
         return
 
     # --- Catalogo prodotti: mappa codice -> categoria ---
@@ -246,22 +245,23 @@ def main():
             m, y = 1, y + 1
     print(f"Total orders in period: {len(all_orders)}")
 
-    # Filtra solo gli ordini dei clienti Wholesaler
+    # Tiene gli ordini di qualunque account noto (ogni Client Type)
     orders_raw = []
     for o in all_orders:
         acct = o.get('Account_Name', {})
-        if isinstance(acct, dict) and acct.get('id') in wholesaler_ids:
+        if isinstance(acct, dict) and acct.get('id') in acct_info:
             info = acct_info.get(acct.get('id', ''), {})
-            o['_account_id']       = acct.get('id', '')
-            o['_account_name']     = info.get('name') or acct.get('name', '')
+            o['_account_id']         = acct.get('id', '')
+            o['_account_name']       = info.get('name') or acct.get('name', '')
             o['_account_country']    = info.get('country', '')
             o['_account_region']     = info.get('region', '')
             o['_account_region_raw'] = info.get('region_raw', '')
             o['_account_province']   = info.get('province', '')
             o['_account_city']       = info.get('city', '')
             o['_account_street']     = info.get('street', '')
+            o['_account_type']       = info.get('client_type', '')
             orders_raw.append(o)
-    print(f"Wholesaler orders: {len(orders_raw)}")
+    print(f"Orders (all client types): {len(orders_raw)}")
 
     # --- Ordered Items: con cache incrementale ---
     # Carica la cache (se presente dalla run precedente).
@@ -348,9 +348,10 @@ def main():
                 'region':     order.get('_account_region', ''),
                 'region_raw': order.get('_account_region_raw', ''),
                 'province':   order.get('_account_province', ''),
-                'city':       order.get('_account_city', ''),
-                'street':     order.get('_account_street', ''),
-                'groups':     groups_for(aname),
+                'city':        order.get('_account_city', ''),
+                'street':      order.get('_account_street', ''),
+                'client_type': order.get('_account_type', ''),
+                'groups':      groups_for(aname),
                 'quarterly': {}, 'monthly': {}, 'orders': []
             }
 
@@ -400,7 +401,8 @@ def main():
             'clients':             client_list,
         }
 
-    all_clients       = list(clients.values())
+    every_client      = list(clients.values())          # ogni Client Type (Global)
+    all_clients       = [c for c in every_client if c.get('client_type') == 'Wholesaler']
     triveneto_clients = [c for c in all_clients if c.get('region')  == 'Triveneto']
     lazio_clients     = [c for c in all_clients if c.get('region')  == 'Lazio']
     portugal_clients  = [c for c in all_clients if c.get('country') == 'Portugal']
@@ -413,15 +415,16 @@ def main():
     lazio_output    = build_output(lazio_clients)
     portugal_output = build_output(portugal_clients)
     puglia_output   = build_output(puglia_clients)
+    global_output   = build_output(every_client)
 
     pwd_a = os.environ.get('DASH_PASSWORD_A', '')
     pwd_b = os.environ.get('DASH_PASSWORD_B', '')
     pwd_c = os.environ.get('DASH_PASSWORD_C', '')
     pwd_d = os.environ.get('DASH_PASSWORD_D', '')
     pwd_e = os.environ.get('DASH_PASSWORD_E', '')
-    if not pwd_a or not pwd_b or not pwd_c or not pwd_d or not pwd_e:
-        raise SystemExit("ERRORE: imposta i secret DASH_PASSWORD_A, DASH_PASSWORD_B, "
-                         "DASH_PASSWORD_C, DASH_PASSWORD_D e DASH_PASSWORD_E.")
+    pwd_f = os.environ.get('DASH_PASSWORD_F', '')
+    if not all([pwd_a, pwd_b, pwd_c, pwd_d, pwd_e, pwd_f]):
+        raise SystemExit("ERRORE: imposta i secret DASH_PASSWORD_A..E e DASH_PASSWORD_F.")
 
     os.makedirs('data', exist_ok=True)
     with open('data/full.enc', 'w', encoding='utf-8') as f:
@@ -434,12 +437,12 @@ def main():
         json.dump(encrypt_json(portugal_output, pwd_d), f)
     with open('data/puglia.enc', 'w', encoding='utf-8') as f:
         json.dump(encrypt_json(puglia_output, pwd_e), f)
+    with open('data/global.enc', 'w', encoding='utf-8') as f:
+        json.dump(encrypt_json(global_output, pwd_f), f)
 
-    print(f"\nSaved data/full.enc ({len(all_clients)} clienti), "
-          f"data/triveneto.enc ({len(triveneto_clients)} clienti), "
-          f"data/lazio.enc ({len(lazio_clients)} clienti), "
-          f"data/portugal.enc ({len(portugal_clients)} clienti) e "
-          f"data/puglia.enc ({len(puglia_clients)} clienti)")
+    print(f"\nSaved full.enc ({len(all_clients)}), triveneto.enc ({len(triveneto_clients)}), "
+          f"lazio.enc ({len(lazio_clients)}), portugal.enc ({len(portugal_clients)}), "
+          f"puglia.enc ({len(puglia_clients)}), global.enc ({len(every_client)} clienti)")
 
 
 if __name__ == '__main__':
