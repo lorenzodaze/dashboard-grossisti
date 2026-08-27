@@ -310,22 +310,30 @@
       window.location.href = 'index.html';
     }
 
-    // Scarica TUTTI gli ordini in CSV (apribile in Excel), stesse colonne del
-    // report Zoho. Una riga per ordine.
+    // Scarica TUTTI i dati in CSV (apribile in Excel): una riga per articolo
+    // ordinato, stesse colonne del report Zoho.
     function exportOrders() {
-      const header = ['Category','Date','Order Number','Company','SAP Order code',
-        'Order Owner','Total','Type','Source','Country','Country dip','Region',
-        'Bought From','so.Order Type'];
+      const header = ['Numero documento','Rif. cliente','Data consegna','Mese','Anno',
+        'Codice BP','Nome BP','Client Type','Codice prodotto','Gruppo Prodotto',
+        'Quantity','Total','Causale','Paese fatturazione','Regione fatturazione',
+        'Provincia fatturazione','Città fatturazione','Indirizzo fatturazione'];
       const rows = [header];
+      const numIt = n => (Number(n) || 0).toString().replace('.', ',');
       (dashData.clients || []).forEach(c => (c.orders || []).forEach(o => {
         const d  = o.ship || o.date || '';
         const dd = d ? d.split('-').reverse().join('/') : '';   // gg/mm/aaaa
-        rows.push([
-          'Wholesaler', dd, o.onum || '', c.name || '', o.sap || '',
-          o.owner || '', (Number(o.total) || 0).toFixed(2).replace('.', ','),
-          'Wholesaler', '', c.country || '', c.country || '',
-          c.region_raw || c.region || '', '', 'Sales',
-        ]);
+        const [yy, mm] = d ? d.split('-') : ['', ''];
+        const mese = mm ? String(Number(mm)) : '';
+        (o.items || []).forEach(it => {
+          rows.push([
+            o.num || '', '', dd, mese, yy || '',
+            c.id || '', c.name || '', 'Wholesaler',
+            it.code || '', it.group || '', numIt(it.qty),
+            (Number(it.total) || 0).toFixed(2).replace('.', ','), '',
+            c.country || '', c.region_raw || c.region || '',
+            c.province || '', c.city || '', c.street || '',
+          ]);
+        });
       }));
       const esc = v => {
         v = String(v == null ? '' : v);

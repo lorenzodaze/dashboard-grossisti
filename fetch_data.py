@@ -192,7 +192,8 @@ def main():
     # --- Wholesaler accounts ---
     print("Fetching wholesaler accounts...")
     accounts = search_records(token, 'Accounts',
-        '(Client_type:equals:Wholesaler)', 'id,Account_Name,Country,Region,State_Province')
+        '(Client_type:equals:Wholesaler)',
+        'id,Account_Name,Country,Region,State_Province,Billing_City,Billing_Street')
     print(f"Wholesaler accounts: {len(accounts)}")
     wholesaler_ids = {a['id'] for a in accounts}
     acct_info      = {a['id']: {
@@ -201,6 +202,8 @@ def main():
         'region':     remap_region(a.get('Region', ''), a.get('State_Province', '')),
         'region_raw': (a.get('Region', '') or '').strip(),
         'province':   (a.get('State_Province', '') or '').strip(),
+        'city':       (a.get('Billing_City', '') or '').strip(),
+        'street':     (a.get('Billing_Street', '') or '').strip(),
     } for a in accounts}
 
     if not wholesaler_ids:
@@ -255,6 +258,8 @@ def main():
             o['_account_region']     = info.get('region', '')
             o['_account_region_raw'] = info.get('region_raw', '')
             o['_account_province']   = info.get('province', '')
+            o['_account_city']       = info.get('city', '')
+            o['_account_street']     = info.get('street', '')
             orders_raw.append(o)
     print(f"Wholesaler orders: {len(orders_raw)}")
 
@@ -343,6 +348,8 @@ def main():
                 'region':     order.get('_account_region', ''),
                 'region_raw': order.get('_account_region_raw', ''),
                 'province':   order.get('_account_province', ''),
+                'city':       order.get('_account_city', ''),
+                'street':     order.get('_account_street', ''),
                 'groups':     groups_for(aname),
                 'quarterly': {}, 'monthly': {}, 'orders': []
             }
