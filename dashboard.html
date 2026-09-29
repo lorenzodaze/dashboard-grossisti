@@ -336,7 +336,7 @@
         (o.items || []).forEach(it => {
           rows.push([
             o.num || '', '', dd, mese, yy || '',
-            c.id || '', c.name || '', 'Wholesaler',
+            c.id || '', c.name || '', c.client_type || '',
             it.code || '', it.group || '', numIt(it.qty),
             (Number(it.total) || 0).toFixed(2).replace('.', ','), '',
             c.country || '', c.region_raw || c.region || '',
